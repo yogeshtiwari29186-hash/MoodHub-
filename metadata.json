@@ -1,0 +1,6 @@
+{
+  "name": "WiFi Manager",
+  "description": "Comprehensive Wi-Fi scanning, secure authorized connections, CSV/TXT password file import, and background Wi-Fi health monitoring.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
