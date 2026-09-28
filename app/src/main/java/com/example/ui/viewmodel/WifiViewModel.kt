@@ -57,6 +57,9 @@ class WifiViewModel(application: Application) : AndroidViewModel(application) {
     val selectedNetwork: StateFlow<WifiNetwork?> = _selectedNetwork.asStateFlow()
 
     // Import File Flow
+    private val _importedEntries = MutableStateFlow<List<ImportedEntry>>(emptyList())
+    val importedEntries: StateFlow<List<ImportedEntry>> = _importedEntries.asStateFlow()
+
     private val _importedPreview = MutableStateFlow<List<ImportedEntry>?>(null)
     val importedPreview: StateFlow<List<ImportedEntry>?> = _importedPreview.asStateFlow()
 
@@ -147,7 +150,9 @@ class WifiViewModel(application: Application) : AndroidViewModel(application) {
                         if (result.entries.isEmpty()) {
                             _importMessage.value = "No valid Wi-Fi credentials found in selected file."
                         } else {
-                            _importedPreview.value = result.entries
+                            val combined = (_importedEntries.value + result.entries).distinctBy { it.ssid.lowercase() }
+                            _importedEntries.value = combined
+                            _importMessage.value = "Imported ${result.entries.size} credentials from file."
                         }
                     }
                     is PasswordFileParser.ParseResult.Error -> {
@@ -155,6 +160,26 @@ class WifiViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
             }
+        }
+    }
+
+    fun updateImportedEntry(id: String, newSsid: String, newPassword: String) {
+        _importedEntries.value = _importedEntries.value.map { entry ->
+            if (entry.id == id) entry.copy(ssid = newSsid.trim(), password = newPassword) else entry
+        }
+    }
+
+    fun deleteImportedEntry(id: String) {
+        _importedEntries.value = _importedEntries.value.filter { it.id != id }
+    }
+
+    fun clearAllImportedEntries() {
+        _importedEntries.value = emptyList()
+    }
+
+    fun updateSavedCredential(id: Long, newSsid: String, newPassword: String, notes: String = "") {
+        viewModelScope.launch {
+            credentialRepo.updateCredential(id, newSsid, newPassword, notes)
         }
     }
 

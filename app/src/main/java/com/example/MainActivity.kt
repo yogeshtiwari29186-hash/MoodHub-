@@ -92,6 +92,7 @@ fun WifiManagerAppRoot(viewModel: WifiViewModel) {
     val networks by viewModel.networks.collectAsStateWithLifecycle()
     val currentInfo by viewModel.currentWifiInfo.collectAsStateWithLifecycle()
     val savedCredentials by viewModel.savedCredentials.collectAsStateWithLifecycle()
+    val importedEntries by viewModel.importedEntries.collectAsStateWithLifecycle()
     val isScanning by viewModel.isScanning.collectAsStateWithLifecycle()
     val isWifiEnabled by viewModel.isWifiEnabled.collectAsStateWithLifecycle()
     val isLocationEnabled by viewModel.isLocationEnabled.collectAsStateWithLifecycle()
@@ -199,7 +200,7 @@ fun WifiManagerAppRoot(viewModel: WifiViewModel) {
                     Text(
                         text = when (selectedTab) {
                             0 -> "WiFi Manager"
-                            1 -> "Authorized Vault"
+                            1 -> "Password List"
                             2 -> "Diagnostics"
                             else -> "Settings"
                         },
@@ -238,11 +239,11 @@ fun WifiManagerAppRoot(viewModel: WifiViewModel) {
                     icon = {
                         Icon(
                             imageVector = if (selectedTab == 1) Icons.Filled.Key else Icons.Outlined.Key,
-                            contentDescription = "Vault"
+                            contentDescription = "Password List"
                         )
                     },
-                    label = { Text("Vault") },
-                    modifier = Modifier.testTag("nav_tab_vault")
+                    label = { Text("Passwords") },
+                    modifier = Modifier.testTag("nav_tab_passwords")
                 )
                 NavigationBarItem(
                     selected = selectedTab == 2,
@@ -286,6 +287,8 @@ fun WifiManagerAppRoot(viewModel: WifiViewModel) {
                     isWifiEnabled = isWifiEnabled,
                     isLocationEnabled = isLocationEnabled,
                     hasPermissions = hasPermissions,
+                    backgroundMonitoringEnabled = backgroundMonitoringEnabled,
+                    onToggleBackgroundMonitoring = { enabled -> viewModel.toggleBackgroundMonitoring(enabled) },
                     onRequestPermissions = { requestRequiredPermissions() },
                     onRefreshScan = { viewModel.refreshScan() },
                     onSelectNetwork = { network -> viewModel.selectNetwork(network) },
@@ -294,13 +297,32 @@ fun WifiManagerAppRoot(viewModel: WifiViewModel) {
                 )
                 1 -> CredentialsScreen(
                     credentials = savedCredentials,
+                    importedEntries = importedEntries,
                     nearbyNetworks = networks,
                     onImportFileClick = { openDocumentPicker() },
                     onDecryptPassword = { cred -> viewModel.getDecryptedPassword(cred) },
                     onDeleteCredential = { id -> viewModel.deleteCredential(id) },
-                    onClearAll = { viewModel.clearAllCredentials() },
+                    onUpdateCredential = { id, ssid, pass, notes -> viewModel.updateSavedCredential(id, ssid, pass, notes) },
+                    onClearAllCredentials = { viewModel.clearAllCredentials() },
+                    onEditImportedEntry = { id, ssid, pass -> viewModel.updateImportedEntry(id, ssid, pass) },
+                    onDeleteImportedEntry = { id -> viewModel.deleteImportedEntry(id) },
+                    onClearAllImported = { viewModel.clearAllImportedEntries() },
                     onManualAdd = { ssid, pass, notes -> viewModel.saveManualCredential(ssid, pass, notes) },
-                    onConnectToNetwork = { net -> viewModel.selectNetwork(net) }
+                    onSelectToConnect = { targetSsid, pass ->
+                        val foundNet = networks.find { it.ssid.equals(targetSsid, ignoreCase = true) }
+                            ?: com.example.model.WifiNetwork(
+                                ssid = targetSsid,
+                                bssid = "",
+                                capabilities = "[WPA2-PSK-CCMP]",
+                                securityType = com.example.model.WifiSecurityType.WPA2_PSK,
+                                level = -60,
+                                signalLevel = 3,
+                                frequency = 2437,
+                                bandLabel = "2.4 GHz",
+                                channel = 6
+                            )
+                        viewModel.selectNetwork(foundNet)
+                    }
                 )
                 2 -> DiagnosticsScreen(
                     currentInfo = currentInfo,
@@ -322,6 +344,7 @@ fun WifiManagerAppRoot(viewModel: WifiViewModel) {
                     },
                     onClearAllData = {
                         viewModel.clearAllCredentials()
+                        viewModel.clearAllImportedEntries()
                         viewModel.toggleBackgroundMonitoring(false)
                         viewModel.toggleResumeOnBoot(false)
                     }
@@ -339,7 +362,11 @@ fun WifiManagerAppRoot(viewModel: WifiViewModel) {
                 ConnectModal(
                     network = network,
                     matchedPassword = matchedPassword,
+                    importedEntries = importedEntries,
                     connectionState = connectionState,
+                    onImportFileClick = { openDocumentPicker() },
+                    onEditImportedEntry = { id, ssid, pass -> viewModel.updateImportedEntry(id, ssid, pass) },
+                    onDeleteImportedEntry = { id -> viewModel.deleteImportedEntry(id) },
                     onConnect = { ssid, password, securityType, saveToVault ->
                         viewModel.connectToNetwork(ssid, password, securityType, saveToVault)
                     },

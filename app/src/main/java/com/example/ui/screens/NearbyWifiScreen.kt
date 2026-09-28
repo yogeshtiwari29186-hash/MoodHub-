@@ -26,6 +26,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.LocationOff
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Security
@@ -40,6 +41,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -69,6 +71,8 @@ fun NearbyWifiScreen(
     isWifiEnabled: Boolean,
     isLocationEnabled: Boolean,
     hasPermissions: Boolean,
+    backgroundMonitoringEnabled: Boolean,
+    onToggleBackgroundMonitoring: (Boolean) -> Unit,
     onRequestPermissions: () -> Unit,
     onRefreshScan: () -> Unit,
     onSelectNetwork: (WifiNetwork) -> Unit,
@@ -115,7 +119,61 @@ fun NearbyWifiScreen(
             onOpenSettings = onOpenWifiSettings
         )
 
-        Spacer(modifier = Modifier.height(14.dp))
+        Spacer(modifier = Modifier.height(10.dp))
+
+        // Quick Background Monitoring Toggle on Home
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("home_background_monitoring_card"),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = if (backgroundMonitoringEnabled) {
+                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+                } else {
+                    MaterialTheme.colorScheme.surfaceContainer
+                }
+            )
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Notifications,
+                        contentDescription = null,
+                        tint = if (backgroundMonitoringEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column {
+                        Text(
+                            text = "Background Monitoring",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = if (backgroundMonitoringEnabled) "Active • Persistent status notification" else "Disabled • Tap switch to activate",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                Switch(
+                    checked = backgroundMonitoringEnabled,
+                    onCheckedChange = onToggleBackgroundMonitoring,
+                    modifier = Modifier.testTag("home_background_monitoring_switch")
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
 
         // Permission & Location Warnings
         if (!hasPermissions) {

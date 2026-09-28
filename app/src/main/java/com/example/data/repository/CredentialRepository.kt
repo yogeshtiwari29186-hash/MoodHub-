@@ -53,6 +53,16 @@ class CredentialRepository(private val credentialDao: CredentialDao) {
             credentialDao.getCredentialBySsid(ssid.trim())
         }
 
+    suspend fun updateCredential(id: Long, newSsid: String, newPassword: String, notes: String = "") = withContext(Dispatchers.IO) {
+        val existing = credentialDao.getCredentialById(id) ?: return@withContext
+        val updated = existing.copy(
+            ssid = newSsid.trim(),
+            encryptedPassword = CredentialSecurity.encrypt(newPassword),
+            notes = notes.trim()
+        )
+        credentialDao.updateCredential(updated)
+    }
+
     suspend fun deleteCredential(id: Long) = withContext(Dispatchers.IO) {
         credentialDao.deleteById(id)
     }

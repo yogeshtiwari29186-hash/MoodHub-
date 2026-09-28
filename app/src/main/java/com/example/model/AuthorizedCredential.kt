@@ -17,6 +17,7 @@ data class AuthorizedCredential(
 )
 
 data class ImportedEntry(
+    val id: String = java.util.UUID.randomUUID().toString(),
     val ssid: String,
     val password: String,
     val securityType: WifiSecurityType = WifiSecurityType.WPA2_PSK,
