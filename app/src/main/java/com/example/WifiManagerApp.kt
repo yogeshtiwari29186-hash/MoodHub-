@@ -4,6 +4,7 @@ import android.app.Application
 import com.example.data.local.AppDatabase
 import com.example.data.preference.UserPreferencesRepository
 import com.example.data.repository.CredentialRepository
+import com.example.data.repository.PasswordBatchRepository
 import com.example.wifi.AuthorizedRouterTestManager
 import com.example.wifi.NetworkDeviceScanner
 import com.example.wifi.WifiConnector
@@ -32,12 +33,16 @@ class WifiManagerApp : Application() {
     lateinit var authorizedRouterTestManager: AuthorizedRouterTestManager
         private set
 
+    lateinit var passwordBatchRepository: PasswordBatchRepository
+        private set
+
     override fun onCreate() {
         super.onCreate()
         instance = this
         database = AppDatabase.getInstance(this)
         credentialRepository = CredentialRepository(database.credentialDao())
         preferencesRepository = UserPreferencesRepository(this)
+        passwordBatchRepository = PasswordBatchRepository(this)
         wifiScannerManager = WifiScannerManager(this)
         wifiConnector = WifiConnector(this)
         networkDeviceScanner = NetworkDeviceScanner(this)
