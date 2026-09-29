@@ -12,6 +12,8 @@ import android.net.wifi.WifiManager
 import android.net.wifi.WifiNetworkSpecifier
 import android.os.Build
 import android.provider.Settings
+import com.example.model.Candidate
+import com.example.model.SuccessfulConnectionResult
 import com.example.model.WifiSecurityType
 import com.example.util.SafeWifiLogger
 import kotlinx.coroutines.CompletableDeferred
@@ -39,7 +41,8 @@ sealed class WifiConnectionState {
         val ssid: String,
         val message: String = "Successfully connected!",
         val ipAddress: String? = null,
-        val gateway: String? = null
+        val gateway: String? = null,
+        val result: SuccessfulConnectionResult? = null
     ) : WifiConnectionState()
     data class Failed(val ssid: String, val reason: String, val canOpenSettings: Boolean = true) : WifiConnectionState()
     data class Cancelled(val ssid: String, val message: String = "Connection cancelled") : WifiConnectionState()
@@ -54,7 +57,12 @@ data class NetworkVerificationResult(
 )
 
 sealed class CandidateConnectionOutcome {
-    data class Success(val ipAddress: String?, val gateway: String?, val linkSpeedMbps: Int?) : CandidateConnectionOutcome()
+    data class Success(
+        val ipAddress: String?,
+        val gateway: String?,
+        val linkSpeedMbps: Int?,
+        val result: SuccessfulConnectionResult? = null
+    ) : CandidateConnectionOutcome()
     data class Failed(val reason: String, val canOpenSettings: Boolean = true) : CandidateConnectionOutcome()
     object Cancelled : CandidateConnectionOutcome()
 }

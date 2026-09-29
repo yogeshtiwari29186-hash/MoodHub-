@@ -108,7 +108,8 @@ fun ConnectModal(
     batchState: PasswordBatchUiState? = null,
     currentWifiInfo: CurrentWifiInfo? = null
 ) {
-    val initialPassword = matchedPassword ?: batchState?.selectedEntry?.password ?: ""
+    val importedMatch = importedEntries.firstOrNull { it.ssid.equals(network.ssid, ignoreCase = true) }
+    val initialPassword = matchedPassword ?: importedMatch?.password ?: batchState?.selectedEntry?.password ?: ""
     var password by remember(network.ssid, matchedPassword) {
         mutableStateOf(initialPassword)
     }
@@ -192,15 +193,15 @@ fun ConnectModal(
             val totalL = entry.totalLines
                 ?: batchState?.totalEntries?.takeIf { it > 0 }
                 ?: if (importedEntries.isNotEmpty()) importedEntries.size.toLong() else null
-            val lineNum = entry.lineNumber
+            val lineNum = entry.lineNumber ?: (importedEntries.indexOf(entry) + 1).toLong()
             val bNum = entry.batchNumber
-                ?: (lineNum?.let { ((it - 1) / 500) + 1 })
+                ?: (lineNum.let { ((it - 1) / 500) + 1 })
                 ?: (batchState?.currentBatch?.toLong()?.takeIf { it > 0 })
             val totalB = entry.totalBatches
                 ?: (totalL?.let { ((it - 1) / 500) + 1 })
                 ?: (batchState?.totalBatches?.toLong()?.takeIf { it > 0 })
             val posInB = entry.positionInBatch
-                ?: (lineNum?.let { (((it - 1) % 500) + 1).toInt() })
+                ?: (lineNum.let { (((it - 1) % 500) + 1).toInt() })
 
             return SelectedCredentialMetadata(
                 password = entry.password,
@@ -220,10 +221,10 @@ fun ConnectModal(
                 val totalL = entry.totalLines
                     ?: batchState?.totalEntries?.takeIf { it > 0 }
                     ?: if (importedEntries.isNotEmpty()) importedEntries.size.toLong() else null
-                val lineNum = entry.lineNumber
-                val bNum = entry.batchNumber ?: (lineNum?.let { ((it - 1) / 500) + 1 })
+                val lineNum = entry.lineNumber ?: (importedEntries.indexOf(entry) + 1).toLong()
+                val bNum = entry.batchNumber ?: (lineNum.let { ((it - 1) / 500) + 1 })
                 val totalB = entry.totalBatches ?: (totalL?.let { ((it - 1) / 500) + 1 })
-                val posInB = entry.positionInBatch ?: (lineNum?.let { (((it - 1) % 500) + 1).toInt() })
+                val posInB = entry.positionInBatch ?: (lineNum.let { (((it - 1) % 500) + 1).toInt() })
                 return SelectedCredentialMetadata(
                     password = entry.password,
                     source = entry.source.ifBlank { "Imported TXT" },
@@ -241,58 +242,86 @@ fun ConnectModal(
     }
 
     // Origin metadata for selected credential from imported file or batch (null if manually entered)
-    var selectedCredentialMetadata by remember(password) {
-        mutableStateOf(findCredentialMetadata(password))
+    var selectedCredentialMetadata by remember {
+        mutableStateOf(
+            findCredentialMetadata(initialPassword) ?: importedMatch?.let { entry ->
+                val lineNum = entry.lineNumber ?: (importedEntries.indexOf(entry) + 1).toLong()
+                val totalL = entry.totalLines ?: (if (importedEntries.isNotEmpty()) importedEntries.size.toLong() else null)
+                val bNum = entry.batchNumber ?: (lineNum.let { ((it - 1) / 500) + 1 })
+                val totalB = entry.totalBatches ?: (totalL?.let { ((it - 1) / 500) + 1 })
+                val posInB = entry.positionInBatch ?: (lineNum.let { (((it - 1) % 500) + 1).toInt() })
+                SelectedCredentialMetadata(
+                    password = entry.password,
+                    source = entry.source.ifBlank { "Imported TXT" },
+                    passwordNumber = lineNum,
+                    lineNumber = lineNum,
+                    totalLines = totalL,
+                    batchNumber = bNum,
+                    totalBatches = totalB,
+                    positionInBatch = posInB
+                )
+            }
+        )
     }
 
     // Preserved successful connection result. Not overwritten on later background ticks or recompositions.
     var lastSuccessfulResult by remember { mutableStateOf<ConnectionResultInfo?>(null) }
 
     // Capture successful connection and preserve result card state
-    LaunchedEffect(connectionState, currentWifiInfo) {
-        if (connectionState is WifiConnectionState.Connected || (lastSuccessfulResult == null && network.isConnected && currentWifiInfo?.ssid?.equals(network.ssid, ignoreCase = true) == true)) {
-            val resolvedIp = (connectionState as? WifiConnectionState.Connected)?.ipAddress
-                ?: currentWifiInfo?.ipAddress?.takeIf { it.isNotBlank() && it != "0.0.0.0" }
-                ?: "192.168.0.108"
+    LaunchedEffect(connectionState, currentWifiInfo, password, selectedCredentialMetadata) {
+        val isConnectedState = connectionState is WifiConnectionState.Connected
+        val isAlreadyConnected = (lastSuccessfulResult == null && network.isConnected && (currentWifiInfo?.ssid?.equals(network.displaySsid, ignoreCase = true) == true || currentWifiInfo?.ssid?.equals(network.ssid, ignoreCase = true) == true))
 
-            val resolvedGateway = (connectionState as? WifiConnectionState.Connected)?.gateway
-                ?: currentWifiInfo?.gateway?.takeIf { it.isNotBlank() && it != "0.0.0.0" }
-                ?: "192.168.0.1"
+        if (isConnectedState || isAlreadyConnected) {
+            val fromStateResult = (connectionState as? WifiConnectionState.Connected)?.result
+            if (fromStateResult != null) {
+                lastSuccessfulResult = fromStateResult
+            } else {
+                val resolvedIp = (connectionState as? WifiConnectionState.Connected)?.ipAddress
+                    ?: currentWifiInfo?.ipAddress?.takeIf { it.isNotBlank() && it != "0.0.0.0" }
+                    ?: "192.168.0.108"
 
-            val activePass = password.ifBlank { matchedPassword ?: batchState?.selectedEntry?.password ?: "" }
-            val metadata = (if (selectedCredentialMetadata?.password == activePass) selectedCredentialMetadata else null)
-                ?: findCredentialMetadata(activePass)
+                val resolvedGateway = (connectionState as? WifiConnectionState.Connected)?.gateway
+                    ?: currentWifiInfo?.gateway?.takeIf { it.isNotBlank() && it != "0.0.0.0" }
+                    ?: "192.168.0.1"
 
-            val isManual = (metadata == null)
+                val activePass = password.ifBlank {
+                    matchedPassword ?: importedMatch?.password ?: batchState?.selectedEntry?.password ?: ""
+                }
+                val metadata = (if (selectedCredentialMetadata?.password == activePass) selectedCredentialMetadata else null)
+                    ?: findCredentialMetadata(activePass)
 
-            val totalL = metadata?.totalLines
-                ?: batchState?.totalEntries?.takeIf { it > 0 }
-                ?: if (importedEntries.isNotEmpty()) importedEntries.size.toLong() else null
+                val isManual = (metadata == null)
 
-            val batchN = metadata?.batchNumber
-                ?: (if (batchState != null && batchState.totalEntries > 0) batchState.currentBatch.toLong() else null)
+                val totalL = metadata?.totalLines
+                    ?: batchState?.totalEntries?.takeIf { it > 0 }
+                    ?: if (importedEntries.isNotEmpty()) importedEntries.size.toLong() else null
 
-            val totalB = metadata?.totalBatches
-                ?: (if (batchState != null && batchState.totalEntries > 0) batchState.totalBatches.toLong() else null)
+                val batchN = metadata?.batchNumber
+                    ?: (if (batchState != null && batchState.totalEntries > 0) batchState.currentBatch.toLong() else null)
 
-            val posInB = metadata?.positionInBatch
-                ?: (if (batchN != null) metadata?.lineNumber?.let { (((it - 1) % 500) + 1).toInt() } else null)
+                val totalB = metadata?.totalBatches
+                    ?: (if (batchState != null && batchState.totalEntries > 0) batchState.totalBatches.toLong() else null)
 
-            lastSuccessfulResult = ConnectionResultInfo(
-                ssid = network.displaySsid,
-                password = activePass,
-                source = if (isManual) "Manually Entered" else (metadata?.source ?: "Imported TXT"),
-                passwordNumber = if (isManual) null else (metadata?.passwordNumber ?: metadata?.lineNumber),
-                lineNumber = if (isManual) null else metadata?.lineNumber,
-                totalLines = if (isManual) null else totalL,
-                batchNumber = if (isManual) null else batchN,
-                totalBatches = if (isManual) null else totalB,
-                positionInBatch = if (isManual) null else posInB,
-                ipAddress = resolvedIp,
-                gateway = resolvedGateway,
-                status = "Connected",
-                isConnected = true
-            )
+                val posInB = metadata?.positionInBatch
+                    ?: (if (batchN != null) metadata?.lineNumber?.let { (((it - 1) % 500) + 1).toInt() } else null)
+
+                lastSuccessfulResult = ConnectionResultInfo(
+                    ssid = network.displaySsid,
+                    password = activePass,
+                    source = if (isManual) "Manually Entered" else (metadata?.source ?: "Imported TXT"),
+                    passwordNumber = if (isManual) null else (metadata?.passwordNumber ?: metadata?.lineNumber),
+                    lineNumber = if (isManual) null else metadata?.lineNumber,
+                    totalLines = if (isManual) null else totalL,
+                    batchNumber = if (isManual) null else batchN,
+                    totalBatches = if (isManual) null else totalB,
+                    positionInBatch = if (isManual) null else posInB,
+                    ipAddress = resolvedIp,
+                    gateway = resolvedGateway,
+                    status = "Connected",
+                    isConnected = true
+                )
+            }
         } else if (lastSuccessfulResult != null) {
             // Update local IP and gateway if they become available later
             val updatedIp = currentWifiInfo?.ipAddress?.takeIf { it.isNotBlank() && it != "0.0.0.0" }
