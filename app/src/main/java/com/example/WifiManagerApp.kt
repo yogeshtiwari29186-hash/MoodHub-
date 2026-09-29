@@ -5,6 +5,7 @@ import com.example.data.local.AppDatabase
 import com.example.data.preference.UserPreferencesRepository
 import com.example.data.repository.CredentialRepository
 import com.example.data.repository.PasswordBatchRepository
+import com.example.data.repository.WiFiConnectionRepository
 import com.example.wifi.AuthorizedRouterTestManager
 import com.example.wifi.NetworkDeviceScanner
 import com.example.wifi.WifiConnector
@@ -27,6 +28,9 @@ class WifiManagerApp : Application() {
     lateinit var wifiConnector: WifiConnector
         private set
 
+    lateinit var wifiConnectionRepository: WiFiConnectionRepository
+        private set
+
     lateinit var networkDeviceScanner: NetworkDeviceScanner
         private set
 
@@ -45,8 +49,9 @@ class WifiManagerApp : Application() {
         passwordBatchRepository = PasswordBatchRepository(this)
         wifiScannerManager = WifiScannerManager(this)
         wifiConnector = WifiConnector(this)
+        wifiConnectionRepository = WiFiConnectionRepository(wifiConnector)
         networkDeviceScanner = NetworkDeviceScanner(this)
-        authorizedRouterTestManager = AuthorizedRouterTestManager(this, wifiConnector)
+        authorizedRouterTestManager = AuthorizedRouterTestManager(this, wifiConnector, wifiConnectionRepository)
     }
 
     companion object {

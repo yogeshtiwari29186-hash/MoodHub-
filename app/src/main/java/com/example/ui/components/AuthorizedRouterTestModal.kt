@@ -284,6 +284,15 @@ fun AuthorizedRouterTestModal(
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurface
                                     )
+                                    if (!result.ipAddress.isNullOrBlank()) {
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = "Verified IP: ${result.ipAddress}${if (!result.gateway.isNullOrBlank()) "  •  Gateway: ${result.gateway}" else ""}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = SignalGreen
+                                        )
+                                    }
                                     Spacer(modifier = Modifier.height(10.dp))
                                     Button(
                                         onClick = {

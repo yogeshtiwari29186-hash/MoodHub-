@@ -1,7 +1,9 @@
 package com.example.wifi
 
 import android.content.Context
+import com.example.data.repository.WiFiConnectionRepository
 import com.example.model.WifiSecurityType
+import com.example.util.SafeWifiLogger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -15,7 +17,8 @@ import kotlinx.coroutines.launch
 
 class AuthorizedRouterTestManager(
     private val context: Context,
-    private val wifiConnector: WifiConnector
+    private val wifiConnector: WifiConnector,
+    private val wifiConnectionRepository: WiFiConnectionRepository? = null
 ) {
     private val scope = CoroutineScope(Dispatchers.Main + Job())
     private var testJob: Job? = null
@@ -33,11 +36,20 @@ class AuthorizedRouterTestManager(
         val currentCandidateMasked: String = "",
         val elapsedTimeSeconds: Long = 0,
         val statusMessage: String = "Ready to test authorized network.",
+        val verifiedIpAddress: String? = null,
+        val verifiedGateway: String? = null,
         val result: TestResult? = null
     )
 
     sealed class TestResult {
-        data class Success(val confirmedPassword: String, val attemptsCount: Int, val timeSeconds: Long) : TestResult()
+        data class Success(
+            val confirmedPassword: String,
+            val attemptsCount: Int,
+            val timeSeconds: Long,
+            val ipAddress: String? = null,
+            val gateway: String? = null
+        ) : TestResult()
+
         data class CompletedNoMatch(val totalTested: Int, val timeSeconds: Long) : TestResult()
         data class Cancelled(val testedCount: Int, val timeSeconds: Long) : TestResult()
         data class Error(val message: String) : TestResult()
@@ -94,11 +106,7 @@ class AuthorizedRouterTestManager(
                     if (!isActive) break
 
                     val candidateNumber = index + 1
-                    val masked = if (candidate.length > 2) {
-                        "${candidate.first()}${"•".repeat(candidate.length - 2)}${candidate.last()}"
-                    } else {
-                        "••••••••"
-                    }
+                    val masked = SafeWifiLogger.mask(candidate)
 
                     _testState.value = _testState.value.copy(
                         currentIndex = candidateNumber,
@@ -106,47 +114,73 @@ class AuthorizedRouterTestManager(
                         statusMessage = "Verifying candidate $candidateNumber of ${filteredCandidates.size}..."
                     )
 
-                    // Attempt connection using Android official Wi-Fi specifier
-                    wifiConnector.connect(targetSsid, candidate, securityType)
+                    SafeWifiLogger.d(
+                        "AuthorizedRouterTestManager",
+                        "Candidate $candidateNumber/${filteredCandidates.size} testing with masked='$masked'"
+                    )
 
-                    // Await connection state for up to 3.5 seconds
-                    val pollLimit = 14
-                    var confirmed = false
-                    for (i in 0 until pollLimit) {
-                        delay(250)
-                        val connState = wifiConnector.connectionState.value
-                        if (connState is WifiConnectionState.Connected) {
-                            confirmed = true
-                            break
-                        }
-                        if (connState is WifiConnectionState.Failed) {
-                            break
-                        }
-                    }
+                    // Execute candidate connection with verification of IP and gateway
+                    val outcome = wifiConnector.connectCandidateSync(
+                        ssid = targetSsid,
+                        password = candidate,
+                        securityType = securityType,
+                        candidateIndex = candidateNumber,
+                        totalCandidates = filteredCandidates.size,
+                        timeoutMs = 12_000L
+                    )
 
-                    if (confirmed) {
-                        val elapsed = _testState.value.elapsedTimeSeconds
-                        timerJob?.cancel()
-                        _testState.value = _testState.value.copy(
-                            isRunning = false,
-                            statusMessage = "Success! Authorized credential confirmed for $targetSsid.",
-                            result = TestResult.Success(
-                                confirmedPassword = candidate,
-                                attemptsCount = candidateNumber,
-                                timeSeconds = elapsed
+                    when (outcome) {
+                        is CandidateConnectionOutcome.Success -> {
+                            val elapsed = _testState.value.elapsedTimeSeconds
+                            timerJob?.cancel()
+                            SafeWifiLogger.i(
+                                "AuthorizedRouterTestManager",
+                                "Candidate $candidateNumber verified! IP=${outcome.ipAddress}, Gateway=${outcome.gateway}"
                             )
-                        )
-                        return@launch
-                    }
+                            _testState.value = _testState.value.copy(
+                                isRunning = false,
+                                verifiedIpAddress = outcome.ipAddress,
+                                verifiedGateway = outcome.gateway,
+                                statusMessage = "Success! Authorized credential confirmed for $targetSsid (IP: ${outcome.ipAddress ?: "Assigned"}).",
+                                result = TestResult.Success(
+                                    confirmedPassword = candidate,
+                                    attemptsCount = candidateNumber,
+                                    timeSeconds = elapsed,
+                                    ipAddress = outcome.ipAddress,
+                                    gateway = outcome.gateway
+                                )
+                            )
+                            return@launch
+                        }
 
-                    // Reset and pause safely between candidates to avoid system throttling
-                    wifiConnector.resetState()
-                    delay(1200)
+                        is CandidateConnectionOutcome.Failed -> {
+                            SafeWifiLogger.d(
+                                "AuthorizedRouterTestManager",
+                                "Candidate $candidateNumber failed: ${outcome.reason}. Executing cleanup."
+                            )
+                            // Mandatory per-candidate cleanup
+                            wifiConnector.disconnectCurrent()
+                            delay(500) // Cooldown between candidates
+                        }
+
+                        is CandidateConnectionOutcome.Cancelled -> {
+                            val elapsed = _testState.value.elapsedTimeSeconds
+                            timerJob?.cancel()
+                            wifiConnector.disconnectCurrent()
+                            _testState.value = _testState.value.copy(
+                                isRunning = false,
+                                statusMessage = "Authorized test cancelled.",
+                                result = TestResult.Cancelled(candidateNumber, elapsed)
+                            )
+                            return@launch
+                        }
+                    }
                 }
 
                 // If loop finished without finding a match
                 val elapsed = _testState.value.elapsedTimeSeconds
                 timerJob?.cancel()
+                wifiConnector.disconnectCurrent()
                 _testState.value = _testState.value.copy(
                     isRunning = false,
                     statusMessage = "Completed: No matching credential found among ${filteredCandidates.size} entries.",
@@ -156,6 +190,7 @@ class AuthorizedRouterTestManager(
             } catch (e: CancellationException) {
                 val elapsed = _testState.value.elapsedTimeSeconds
                 timerJob?.cancel()
+                wifiConnector.disconnectCurrent()
                 _testState.value = _testState.value.copy(
                     isRunning = false,
                     statusMessage = "Authorized test stopped by user.",
@@ -163,9 +198,10 @@ class AuthorizedRouterTestManager(
                 )
             } catch (e: Exception) {
                 timerJob?.cancel()
+                wifiConnector.disconnectCurrent()
                 _testState.value = _testState.value.copy(
                     isRunning = false,
-                    statusMessage = "Error during test: ${e.localizedMessage}",
+                    statusMessage = "Error during test: ${e.localizedMessage ?: "Unknown error"}",
                     result = TestResult.Error(e.localizedMessage ?: "Unknown error")
                 )
             }
@@ -175,7 +211,7 @@ class AuthorizedRouterTestManager(
     fun stopTest() {
         testJob?.cancel()
         timerJob?.cancel()
-        wifiConnector.resetState()
+        wifiConnector.disconnectCurrent()
         val currState = _testState.value
         if (currState.isRunning) {
             _testState.value = currState.copy(

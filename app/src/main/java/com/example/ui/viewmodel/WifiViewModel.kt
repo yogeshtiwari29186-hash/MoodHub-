@@ -9,6 +9,7 @@ import com.example.model.AuthorizedCredential
 import com.example.model.ConnectedDevice
 import com.example.model.CurrentWifiInfo
 import com.example.model.ImportedEntry
+import com.example.model.WifiConnectionSessionState
 import com.example.model.WifiNetwork
 import com.example.model.WifiSecurityType
 import com.example.service.WifiMonitoringService
@@ -32,6 +33,7 @@ class WifiViewModel(application: Application) : AndroidViewModel(application) {
     private val app = application as WifiManagerApp
     private val scannerManager = app.wifiScannerManager
     private val connector = app.wifiConnector
+    val wifiConnectionRepository = app.wifiConnectionRepository
     private val credentialRepo = app.credentialRepository
     private val prefsRepo = app.preferencesRepository
     private val deviceScanner = app.networkDeviceScanner
@@ -40,6 +42,9 @@ class WifiViewModel(application: Application) : AndroidViewModel(application) {
 
     // Password Batch & Background Streaming State
     val batchUiState: StateFlow<com.example.model.PasswordBatchUiState> = batchRepository.batchUiState
+
+    // Wi-Fi Connection Lifecycle Session State
+    val connectionSessionState: StateFlow<WifiConnectionSessionState> = wifiConnectionRepository.sessionState
 
     // Scanner & Networks
     private val _networks = MutableStateFlow<List<WifiNetwork>>(emptyList())
@@ -161,16 +166,26 @@ class WifiViewModel(application: Application) : AndroidViewModel(application) {
                     importedFrom = "Manual Connect"
                 )
             }
-            connector.connect(ssid, password, securityType)
+            wifiConnectionRepository.connectSingle(ssid, password, securityType)
         }
     }
 
+    fun connectWithCandidates(
+        ssid: String,
+        securityType: WifiSecurityType,
+        candidates: List<String>
+    ) {
+        wifiConnectionRepository.connectWithCandidates(ssid, securityType, candidates)
+    }
+
     fun cancelConnection() {
+        wifiConnectionRepository.cancel()
         connector.resetState()
     }
 
     fun dismissConnectModal() {
         _selectedNetwork.value = null
+        wifiConnectionRepository.reset()
         connector.resetState()
     }
 

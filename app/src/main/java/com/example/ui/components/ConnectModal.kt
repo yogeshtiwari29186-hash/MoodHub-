@@ -225,13 +225,21 @@ fun ConnectModal(
                                     Spacer(modifier = Modifier.width(12.dp))
                                     Column {
                                         Text(
-                                            text = "Connecting to ${connectionState.ssid}...",
+                                            text = if (connectionState.totalCandidates > 1) {
+                                                "Candidate ${connectionState.candidateIndex} of ${connectionState.totalCandidates}..."
+                                            } else {
+                                                "Connecting to ${connectionState.ssid}..."
+                                            },
                                             style = MaterialTheme.typography.labelLarge,
                                             fontWeight = FontWeight.Bold,
                                             color = MaterialTheme.colorScheme.primary
                                         )
                                         Text(
-                                            text = "Android is negotiating Wi-Fi credentials.",
+                                            text = if (connectionState.candidateMasked.isNotBlank()) {
+                                                "Testing: ${connectionState.candidateMasked}"
+                                            } else {
+                                                "Android is negotiating Wi-Fi credentials."
+                                            },
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
@@ -266,11 +274,46 @@ fun ConnectModal(
                                     modifier = Modifier.size(24.dp)
                                 )
                                 Spacer(modifier = Modifier.width(12.dp))
+                                Column {
+                                    Text(
+                                        text = "Connected successfully to ${connectionState.ssid}!",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.Bold,
+                                        color = SignalGreen
+                                    )
+                                    if (!connectionState.ipAddress.isNullOrBlank()) {
+                                        Text(
+                                            text = "IP: ${connectionState.ipAddress}${if (!connectionState.gateway.isNullOrBlank()) "  •  Gateway: ${connectionState.gateway}" else ""}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = FontWeight.Medium,
+                                            color = SignalGreen
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
+                    }
+                    is WifiConnectionState.Cancelled -> {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+                                .padding(12.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    Icons.Filled.Close,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
                                 Text(
-                                    text = "Connected successfully to ${connectionState.ssid}!",
-                                    style = MaterialTheme.typography.labelLarge,
-                                    fontWeight = FontWeight.Bold,
-                                    color = SignalGreen
+                                    text = "Connection attempt cancelled.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         }
