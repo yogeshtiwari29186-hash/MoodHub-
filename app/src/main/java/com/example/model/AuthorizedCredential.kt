@@ -21,5 +21,11 @@ data class ImportedEntry(
     val ssid: String,
     val password: String,
     val securityType: WifiSecurityType = WifiSecurityType.WPA2_PSK,
-    val isValid: Boolean = true
+    val isValid: Boolean = true,
+    val lineNumber: Long? = null,
+    val totalLines: Long? = null,
+    val batchNumber: Long? = null,
+    val totalBatches: Long? = null,
+    val positionInBatch: Int? = null,
+    val source: String = "Imported TXT"
 )

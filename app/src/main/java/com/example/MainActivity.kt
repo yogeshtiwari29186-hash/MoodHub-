@@ -442,6 +442,8 @@ fun WifiManagerAppRoot(viewModel: WifiViewModel) {
                     matchedPassword = matchedPassword,
                     importedEntries = importedEntries,
                     connectionState = connectionState,
+                    batchState = batchUiState,
+                    currentWifiInfo = currentInfo,
                     onImportFileClick = { openDocumentPicker() },
                     onEditImportedEntry = { id, ssid, pass -> viewModel.updateImportedEntry(id, ssid, pass) },
                     onDeleteImportedEntry = { id -> viewModel.deleteImportedEntry(id) },

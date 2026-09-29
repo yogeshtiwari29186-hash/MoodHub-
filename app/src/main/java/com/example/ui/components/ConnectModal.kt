@@ -1,6 +1,7 @@
 package com.example.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,10 +16,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Check
@@ -30,8 +33,6 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.Key
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Password
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Visibility
@@ -39,11 +40,13 @@ import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -66,6 +69,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -74,11 +78,17 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.example.model.BatchPasswordEntry
+import com.example.model.ConnectionResultInfo
+import com.example.model.CurrentWifiInfo
 import com.example.model.ImportedEntry
+import com.example.model.PasswordBatchUiState
+import com.example.model.SelectedCredentialMetadata
 import com.example.model.WifiNetwork
 import com.example.model.WifiSecurityType
 import com.example.ui.theme.SignalGreen
 import com.example.wifi.WifiConnectionState
+import java.text.NumberFormat
 
 @Composable
 fun ConnectModal(
@@ -94,7 +104,9 @@ fun ConnectModal(
     onOpenRouterTest: () -> Unit,
     onOpenSettings: () -> Unit,
     onDismiss: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    batchState: PasswordBatchUiState? = null,
+    currentWifiInfo: CurrentWifiInfo? = null
 ) {
     var password by remember(network.ssid, matchedPassword) {
         mutableStateOf(matchedPassword ?: "")
@@ -106,17 +118,77 @@ fun ConnectModal(
     val isOpenNetwork = network.securityType == WifiSecurityType.OPEN
     val revealedPasswords = remember { mutableStateMapOf<String, Boolean>() }
 
+    // Origin metadata for selected credential from imported file or batch (null if manually entered)
+    var selectedCredentialMetadata by remember { mutableStateOf<SelectedCredentialMetadata?>(null) }
+
+    // Preserved successful connection result. Not overwritten on later background ticks or recompositions.
+    var lastSuccessfulResult by remember { mutableStateOf<ConnectionResultInfo?>(null) }
+
     // Dialog state for editing an imported entry
     var editingEntry by remember { mutableStateOf<ImportedEntry?>(null) }
     var editSsid by remember { mutableStateOf("") }
     var editPassword by remember { mutableStateOf("") }
 
     var importListSearch by remember { mutableStateOf("") }
+    var optionBSubTab by remember { mutableIntStateOf(0) } // 0: Parsed Entries, 1: Loaded Batch (if any)
 
     val filteredImported = remember(importedEntries, importListSearch) {
         importedEntries.filter {
             importListSearch.isBlank() ||
-                    it.ssid.contains(importListSearch, ignoreCase = true)
+                    it.ssid.contains(importListSearch, ignoreCase = true) ||
+                    it.password.contains(importListSearch, ignoreCase = true)
+        }
+    }
+
+    val filteredBatch = remember(batchState?.currentEntries, importListSearch) {
+        batchState?.currentEntries?.filter {
+            importListSearch.isBlank() || it.password.contains(importListSearch, ignoreCase = true)
+        } ?: emptyList()
+    }
+
+    // Capture successful connection and preserve result card state
+    LaunchedEffect(connectionState, currentWifiInfo) {
+        if (connectionState is WifiConnectionState.Connected || (lastSuccessfulResult == null && network.isConnected && currentWifiInfo?.ssid?.equals(network.ssid, ignoreCase = true) == true)) {
+            val resolvedIp = (connectionState as? WifiConnectionState.Connected)?.ipAddress
+                ?: currentWifiInfo?.ipAddress?.takeIf { it.isNotBlank() && it != "0.0.0.0" }
+
+            val metadata = selectedCredentialMetadata
+            val activePass = password.ifBlank { matchedPassword ?: "" }
+            val isManual = (metadata == null || metadata.password != activePass)
+
+            val totalL = metadata?.totalLines
+                ?: batchState?.totalEntries?.takeIf { it > 0 }
+                ?: if (importedEntries.isNotEmpty()) importedEntries.size.toLong() else null
+
+            val batchN = metadata?.batchNumber
+                ?: (if (batchState != null && batchState.totalEntries > 500L) batchState.currentBatch.toLong().takeIf { it > 0 } else null)
+
+            val totalB = metadata?.totalBatches
+                ?: (if (batchState != null && batchState.totalEntries > 500L) batchState.totalBatches.toLong().takeIf { it > 0 } else null)
+
+            val posInB = metadata?.positionInBatch
+                ?: (if (batchN != null) metadata?.lineNumber?.let { (((it - 1) % 500) + 1).toInt() } else null)
+
+            lastSuccessfulResult = ConnectionResultInfo(
+                ssid = network.displaySsid,
+                password = activePass,
+                source = if (isManual) "Manually Entered" else (metadata?.source ?: "Imported TXT"),
+                passwordNumber = if (isManual) null else (metadata?.passwordNumber ?: metadata?.lineNumber),
+                lineNumber = if (isManual) null else metadata?.lineNumber,
+                totalLines = if (isManual) null else totalL,
+                batchNumber = if (isManual) null else batchN,
+                totalBatches = if (isManual) null else totalB,
+                positionInBatch = if (isManual) null else posInB,
+                ipAddress = resolvedIp,
+                status = "Connected",
+                isConnected = true
+            )
+        } else if (lastSuccessfulResult != null) {
+            // Update local IP if it becomes available later
+            val updatedIp = currentWifiInfo?.ipAddress?.takeIf { it.isNotBlank() && it != "0.0.0.0" }
+            if (updatedIp != null && lastSuccessfulResult?.ipAddress == null) {
+                lastSuccessfulResult = lastSuccessfulResult?.copy(ipAddress = updatedIp)
+            }
         }
     }
 
@@ -130,8 +202,8 @@ fun ConnectModal(
     ) {
         Surface(
             modifier = modifier
-                .fillMaxWidth(0.94f)
-                .fillMaxHeight(0.88f)
+                .fillMaxWidth(0.95f)
+                .fillMaxHeight(0.92f)
                 .testTag("connect_modal_dialog"),
             shape = RoundedCornerShape(24.dp),
             color = MaterialTheme.colorScheme.surface,
@@ -225,21 +297,16 @@ fun ConnectModal(
                                     Spacer(modifier = Modifier.width(12.dp))
                                     Column {
                                         Text(
-                                            text = if (connectionState.totalCandidates > 1) {
-                                                "Candidate ${connectionState.candidateIndex} of ${connectionState.totalCandidates}..."
-                                            } else {
-                                                "Connecting to ${connectionState.ssid}..."
-                                            },
+                                            text = "Connecting...",
                                             style = MaterialTheme.typography.labelLarge,
                                             fontWeight = FontWeight.Bold,
                                             color = MaterialTheme.colorScheme.primary
                                         )
+                                        val candidateIndex = selectedCredentialMetadata?.positionInBatch
+                                            ?: connectionState.candidateIndex
+                                        val totalInBatch = 500
                                         Text(
-                                            text = if (connectionState.candidateMasked.isNotBlank()) {
-                                                "Testing: ${connectionState.candidateMasked}"
-                                            } else {
-                                                "Android is negotiating Wi-Fi credentials."
-                                            },
+                                            text = "Candidate: $candidateIndex / $totalInBatch",
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
@@ -274,22 +341,12 @@ fun ConnectModal(
                                     modifier = Modifier.size(24.dp)
                                 )
                                 Spacer(modifier = Modifier.width(12.dp))
-                                Column {
-                                    Text(
-                                        text = "Connected successfully to ${connectionState.ssid}!",
-                                        style = MaterialTheme.typography.labelLarge,
-                                        fontWeight = FontWeight.Bold,
-                                        color = SignalGreen
-                                    )
-                                    if (!connectionState.ipAddress.isNullOrBlank()) {
-                                        Text(
-                                            text = "IP: ${connectionState.ipAddress}${if (!connectionState.gateway.isNullOrBlank()) "  •  Gateway: ${connectionState.gateway}" else ""}",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            fontWeight = FontWeight.Medium,
-                                            color = SignalGreen
-                                        )
-                                    }
-                                }
+                                Text(
+                                    text = "✓ Connected",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = SignalGreen
+                                )
                             }
                         }
                         Spacer(modifier = Modifier.height(12.dp))
@@ -379,8 +436,13 @@ fun ConnectModal(
                         selected = selectedOptionTab == 1,
                         onClick = { selectedOptionTab = 1 },
                         text = {
+                            val countLabel = if ((batchState?.totalEntries ?: 0L) > 0) {
+                                NumberFormat.getNumberInstance().format(batchState!!.totalEntries)
+                            } else {
+                                "${importedEntries.size}"
+                            }
                             Text(
-                                text = "Option B — Import List (${importedEntries.size})",
+                                text = "Option B — Import List ($countLabel)",
                                 fontWeight = if (selectedOptionTab == 1) FontWeight.Bold else FontWeight.Normal,
                                 style = MaterialTheme.typography.labelMedium
                             )
@@ -389,14 +451,16 @@ fun ConnectModal(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
                 // Content for Option A: Enter Password
                 if (selectedOptionTab == 0) {
+                    val optionAScrollState = rememberScrollState()
                     Column(
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxWidth()
+                            .verticalScroll(optionAScrollState)
                     ) {
                         if (matchedPassword != null && password.isBlank()) {
                             Box(
@@ -425,7 +489,10 @@ fun ConnectModal(
                                             color = MaterialTheme.colorScheme.onTertiaryContainer
                                         )
                                     }
-                                    TextButton(onClick = { password = matchedPassword }) {
+                                    TextButton(onClick = {
+                                        password = matchedPassword
+                                        selectedCredentialMetadata = null
+                                    }) {
                                         Text("Auto-fill")
                                     }
                                 }
@@ -444,7 +511,13 @@ fun ConnectModal(
 
                             OutlinedTextField(
                                 value = password,
-                                onValueChange = { password = it },
+                                onValueChange = { newPass ->
+                                    password = newPass
+                                    // If user types manually, clear metadata to show "Source: Manually Entered"
+                                    if (selectedCredentialMetadata?.password != newPass) {
+                                        selectedCredentialMetadata = null
+                                    }
+                                },
                                 label = { Text("Wi-Fi Password") },
                                 placeholder = { Text("Type or paste password") },
                                 singleLine = true,
@@ -464,7 +537,10 @@ fun ConnectModal(
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         if (password.isNotEmpty()) {
                                             IconButton(
-                                                onClick = { password = "" },
+                                                onClick = {
+                                                    password = ""
+                                                    selectedCredentialMetadata = null
+                                                },
                                                 modifier = Modifier.testTag("clear_password_button")
                                             ) {
                                                 Icon(
@@ -526,7 +602,17 @@ fun ConnectModal(
                             }
                         }
 
-                        Spacer(modifier = Modifier.weight(1f))
+                        // =====================================================================
+                        // SUCCESSFUL AUTHORIZED CONNECTION RESULT CARD
+                        // Appears directly below the password input area as requested
+                        // =====================================================================
+                        lastSuccessfulResult?.let { result ->
+                            Spacer(modifier = Modifier.height(14.dp))
+                            SuccessfulConnectionCard(result = result)
+                            Spacer(modifier = Modifier.height(14.dp))
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
 
                         // Action Buttons for Option A
                         Row(
@@ -545,7 +631,7 @@ fun ConnectModal(
                             if (connectionState is WifiConnectionState.Connecting) {
                                 Button(
                                     onClick = onCancelConnection,
-                                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                                    colors = ButtonDefaults.buttonColors(
                                         containerColor = MaterialTheme.colorScheme.error
                                     ),
                                     modifier = Modifier
@@ -566,7 +652,7 @@ fun ConnectModal(
                                     shape = RoundedCornerShape(12.dp),
                                     enabled = (isOpenNetwork || password.length >= 8)
                                 ) {
-                                    Text("Connect")
+                                    Text(if (lastSuccessfulResult != null) "Reconnect" else "Connect")
                                 }
                             }
                         }
@@ -631,7 +717,42 @@ fun ConnectModal(
 
                         Spacer(modifier = Modifier.height(10.dp))
 
-                        if (importedEntries.isNotEmpty()) {
+                        // If both parsed entries and loaded batch exist, offer a segmented switch
+                        val hasBatchEntries = (batchState?.currentEntries?.isNotEmpty() == true)
+                        if (hasBatchEntries && importedEntries.isNotEmpty()) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                FilledTonalButton(
+                                    onClick = { optionBSubTab = 0 },
+                                    modifier = Modifier.weight(1f),
+                                    colors = if (optionBSubTab == 0) ButtonDefaults.filledTonalButtonColors(
+                                        containerColor = MaterialTheme.colorScheme.primaryContainer
+                                    ) else ButtonDefaults.filledTonalButtonColors()
+                                ) {
+                                    Text("List (${importedEntries.size})", style = MaterialTheme.typography.labelSmall)
+                                }
+                                FilledTonalButton(
+                                    onClick = { optionBSubTab = 1 },
+                                    modifier = Modifier.weight(1f),
+                                    colors = if (optionBSubTab == 1) ButtonDefaults.filledTonalButtonColors(
+                                        containerColor = MaterialTheme.colorScheme.primaryContainer
+                                    ) else ButtonDefaults.filledTonalButtonColors()
+                                ) {
+                                    Text("Batch #${batchState?.currentBatch ?: 1} (${batchState?.currentEntries?.size ?: 0})", style = MaterialTheme.typography.labelSmall)
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
+
+                        val activeListHasItems = if (optionBSubTab == 1 && hasBatchEntries) {
+                            filteredBatch.isNotEmpty()
+                        } else {
+                            filteredImported.isNotEmpty()
+                        }
+
+                        if (activeListHasItems || importListSearch.isNotBlank()) {
                             OutlinedTextField(
                                 value = importListSearch,
                                 onValueChange = { importListSearch = it },
@@ -650,110 +771,224 @@ fun ConnectModal(
                                     .fillMaxWidth(),
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                items(filteredImported, key = { it.id }) { item ->
-                                    val isRevealed = revealedPasswords[item.id] == true
-                                    val isMatchForThisNetwork = item.ssid.equals(network.ssid, ignoreCase = true)
+                                if (optionBSubTab == 1 && hasBatchEntries) {
+                                    // Display 500-entry indexed batch items
+                                    items(filteredBatch, key = { "batch_${it.globalIndex}" }) { batchEntry ->
+                                        val isRevealed = revealedPasswords["b_${batchEntry.globalIndex}"] == true
+                                        val bNum = batchState?.currentBatch?.toLong() ?: 1L
+                                        val totalB = batchState?.totalBatches?.toLong() ?: 1L
+                                        val totalE = batchState?.totalEntries ?: 0L
 
-                                    Card(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        shape = RoundedCornerShape(12.dp),
-                                        colors = CardDefaults.cardColors(
-                                            containerColor = if (isMatchForThisNetwork) {
-                                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
-                                            } else {
-                                                MaterialTheme.colorScheme.surfaceContainer
-                                            }
-                                        )
-                                    ) {
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(10.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Icon(
-                                                imageVector = if (isMatchForThisNetwork) Icons.Filled.Wifi else Icons.Filled.Key,
-                                                contentDescription = null,
-                                                tint = if (isMatchForThisNetwork) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                                modifier = Modifier.size(20.dp)
+                                        Card(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            shape = RoundedCornerShape(12.dp),
+                                            colors = CardDefaults.cardColors(
+                                                containerColor = MaterialTheme.colorScheme.surfaceContainer
                                             )
+                                        ) {
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(10.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.Key,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(10.dp))
 
-                                            Spacer(modifier = Modifier.width(10.dp))
-
-                                            Column(modifier = Modifier.weight(1f)) {
-                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Column(modifier = Modifier.weight(1f)) {
                                                     Text(
-                                                        text = item.ssid,
+                                                        text = "Password #${batchEntry.globalIndex}",
                                                         style = MaterialTheme.typography.bodyMedium,
                                                         fontWeight = FontWeight.Bold
                                                     )
-                                                    if (isMatchForThisNetwork) {
-                                                        Spacer(modifier = Modifier.width(6.dp))
+                                                    Text(
+                                                        text = "Line: ${NumberFormat.getNumberInstance().format(batchEntry.globalIndex)} / ${NumberFormat.getNumberInstance().format(totalE)}",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = MaterialTheme.colorScheme.primary
+                                                    )
+                                                    Text(
+                                                        text = if (isRevealed) batchEntry.password else "••••••••",
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        fontFamily = FontFamily.Monospace,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                }
+
+                                                IconButton(
+                                                    onClick = { revealedPasswords["b_${batchEntry.globalIndex}"] = !isRevealed },
+                                                    modifier = Modifier.size(32.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = if (isRevealed) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                                                        contentDescription = null,
+                                                        modifier = Modifier.size(16.dp)
+                                                    )
+                                                }
+
+                                                Spacer(modifier = Modifier.width(6.dp))
+
+                                                Button(
+                                                    onClick = {
+                                                        password = batchEntry.password
+                                                        selectedCredentialMetadata = SelectedCredentialMetadata(
+                                                            password = batchEntry.password,
+                                                            source = "Imported TXT",
+                                                            passwordNumber = batchEntry.globalIndex,
+                                                            lineNumber = batchEntry.globalIndex,
+                                                            totalLines = if (totalE > 0) totalE else null,
+                                                            batchNumber = bNum,
+                                                            totalBatches = totalB,
+                                                            positionInBatch = batchEntry.batchIndex
+                                                        )
+                                                        selectedOptionTab = 0
+                                                    },
+                                                    shape = RoundedCornerShape(8.dp),
+                                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                                    modifier = Modifier.testTag("select_batch_entry_${batchEntry.globalIndex}")
+                                                ) {
+                                                    Text("Select", style = MaterialTheme.typography.labelMedium)
+                                                }
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    // Display parsed imported entries
+                                    items(filteredImported, key = { it.id }) { item ->
+                                        val isRevealed = revealedPasswords[item.id] == true
+                                        val isMatchForThisNetwork = item.ssid.equals(network.ssid, ignoreCase = true)
+
+                                        Card(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            shape = RoundedCornerShape(12.dp),
+                                            colors = CardDefaults.cardColors(
+                                                containerColor = if (isMatchForThisNetwork) {
+                                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+                                                } else {
+                                                    MaterialTheme.colorScheme.surfaceContainer
+                                                }
+                                            )
+                                        ) {
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(10.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Icon(
+                                                    imageVector = if (isMatchForThisNetwork) Icons.Filled.Wifi else Icons.Filled.Key,
+                                                    contentDescription = null,
+                                                    tint = if (isMatchForThisNetwork) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+
+                                                Spacer(modifier = Modifier.width(10.dp))
+
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Row(verticalAlignment = Alignment.CenterVertically) {
                                                         Text(
-                                                            text = "(Matching SSID)",
-                                                            style = MaterialTheme.typography.labelSmall,
-                                                            color = MaterialTheme.colorScheme.primary,
+                                                            text = item.ssid,
+                                                            style = MaterialTheme.typography.bodyMedium,
                                                             fontWeight = FontWeight.Bold
                                                         )
+                                                        if (isMatchForThisNetwork) {
+                                                            Spacer(modifier = Modifier.width(6.dp))
+                                                            Text(
+                                                                text = "(Matching SSID)",
+                                                                style = MaterialTheme.typography.labelSmall,
+                                                                color = MaterialTheme.colorScheme.primary,
+                                                                fontWeight = FontWeight.Bold
+                                                            )
+                                                        }
                                                     }
+                                                    if (item.lineNumber != null) {
+                                                        val totalStr = if ((item.totalLines ?: 0L) > 0) {
+                                                            " / ${NumberFormat.getNumberInstance().format(item.totalLines)}"
+                                                        } else ""
+                                                        Text(
+                                                            text = "Line ${NumberFormat.getNumberInstance().format(item.lineNumber)}$totalStr",
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            color = MaterialTheme.colorScheme.primary
+                                                        )
+                                                    }
+                                                    Text(
+                                                        text = if (isRevealed) item.password else "••••••••",
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
                                                 }
-                                                Text(
-                                                    text = if (isRevealed) item.password else "••••••••",
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
-                                            }
 
-                                            // Password show toggle
-                                            IconButton(
-                                                onClick = { revealedPasswords[item.id] = !isRevealed },
-                                                modifier = Modifier.size(32.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = if (isRevealed) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                                                    contentDescription = null,
-                                                    modifier = Modifier.size(16.dp)
-                                                )
-                                            }
+                                                // Password show toggle
+                                                IconButton(
+                                                    onClick = { revealedPasswords[item.id] = !isRevealed },
+                                                    modifier = Modifier.size(32.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = if (isRevealed) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                                                        contentDescription = null,
+                                                        modifier = Modifier.size(16.dp)
+                                                    )
+                                                }
 
-                                            // Edit entry
-                                            IconButton(
-                                                onClick = {
-                                                    editingEntry = item
-                                                    editSsid = item.ssid
-                                                    editPassword = item.password
-                                                },
-                                                modifier = Modifier.size(32.dp)
-                                            ) {
-                                                Icon(Icons.Filled.Edit, contentDescription = "Edit entry", modifier = Modifier.size(16.dp))
-                                            }
+                                                // Edit entry
+                                                IconButton(
+                                                    onClick = {
+                                                        editingEntry = item
+                                                        editSsid = item.ssid
+                                                        editPassword = item.password
+                                                    },
+                                                    modifier = Modifier.size(32.dp)
+                                                ) {
+                                                    Icon(Icons.Filled.Edit, contentDescription = "Edit entry", modifier = Modifier.size(16.dp))
+                                                }
 
-                                            // Delete entry
-                                            IconButton(
-                                                onClick = { onDeleteImportedEntry(item.id) },
-                                                modifier = Modifier.size(32.dp)
-                                            ) {
-                                                Icon(
-                                                    Icons.Filled.Delete,
-                                                    contentDescription = "Delete entry",
-                                                    tint = MaterialTheme.colorScheme.error,
-                                                    modifier = Modifier.size(16.dp)
-                                                )
-                                            }
+                                                // Delete entry
+                                                IconButton(
+                                                    onClick = { onDeleteImportedEntry(item.id) },
+                                                    modifier = Modifier.size(32.dp)
+                                                ) {
+                                                    Icon(
+                                                        Icons.Filled.Delete,
+                                                        contentDescription = "Delete entry",
+                                                        tint = MaterialTheme.colorScheme.error,
+                                                        modifier = Modifier.size(16.dp)
+                                                    )
+                                                }
 
-                                            Spacer(modifier = Modifier.width(4.dp))
+                                                Spacer(modifier = Modifier.width(4.dp))
 
-                                            // Select Button (puts password into field and switches to Option A)
-                                            Button(
-                                                onClick = {
-                                                    password = item.password
-                                                    selectedOptionTab = 0
-                                                },
-                                                shape = RoundedCornerShape(8.dp),
-                                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                                                modifier = Modifier.testTag("select_imported_${item.ssid.replace(" ", "_")}")
-                                            ) {
-                                                Text("Select", style = MaterialTheme.typography.labelMedium)
+                                                // Select Button
+                                                Button(
+                                                    onClick = {
+                                                        password = item.password
+                                                        val lineNum = item.lineNumber
+                                                        val totalL = item.totalLines ?: (if (importedEntries.isNotEmpty()) importedEntries.size.toLong() else null)
+                                                        val bNum = item.batchNumber ?: (lineNum?.let { ((it - 1) / 500) + 1 })
+                                                        val totalB = item.totalBatches ?: (totalL?.let { ((it - 1) / 500) + 1 })
+                                                        val posInB = item.positionInBatch ?: (lineNum?.let { (((it - 1) % 500) + 1).toInt() })
+
+                                                        selectedCredentialMetadata = SelectedCredentialMetadata(
+                                                            password = item.password,
+                                                            source = item.source.ifBlank { "Imported TXT" },
+                                                            passwordNumber = lineNum,
+                                                            lineNumber = lineNum,
+                                                            totalLines = totalL,
+                                                            batchNumber = bNum,
+                                                            totalBatches = totalB,
+                                                            positionInBatch = posInB
+                                                        )
+                                                        selectedOptionTab = 0
+                                                    },
+                                                    shape = RoundedCornerShape(8.dp),
+                                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                                    modifier = Modifier.testTag("select_imported_${item.ssid.replace(" ", "_")}")
+                                                ) {
+                                                    Text("Select", style = MaterialTheme.typography.labelMedium)
+                                                }
                                             }
                                         }
                                     }
@@ -768,25 +1003,22 @@ fun ConnectModal(
                             ) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     Icon(
-                                        Icons.Filled.FileDownload,
+                                        imageVector = Icons.Filled.FileDownload,
                                         contentDescription = null,
                                         tint = MaterialTheme.colorScheme.outline,
                                         modifier = Modifier.size(48.dp)
                                     )
-                                    Spacer(modifier = Modifier.height(10.dp))
+                                    Spacer(modifier = Modifier.height(12.dp))
                                     Text(
-                                        text = "No Password List Loaded",
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        text = "Import a TXT or CSV file with 'SSID,Password' format.",
-                                        style = MaterialTheme.typography.bodySmall,
+                                        text = "No imported passwords available yet.",
+                                        style = MaterialTheme.typography.bodyMedium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
-                                    Spacer(modifier = Modifier.height(14.dp))
-                                    Button(onClick = onImportFileClick) {
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    Button(
+                                        onClick = onImportFileClick,
+                                        shape = RoundedCornerShape(12.dp)
+                                    ) {
                                         Text("Select TXT / CSV File")
                                     }
                                 }
@@ -802,17 +1034,17 @@ fun ConnectModal(
     editingEntry?.let { entry ->
         AlertDialog(
             onDismissRequest = { editingEntry = null },
-            title = { Text("Edit Imported Credential") },
+            title = { Text("Edit Imported Entry") },
             text = {
                 Column {
                     OutlinedTextField(
                         value = editSsid,
                         onValueChange = { editSsid = it },
-                        label = { Text("SSID / Network") },
+                        label = { Text("Network Name / SSID") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
-                    Spacer(modifier = Modifier.height(10.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
                     OutlinedTextField(
                         value = editPassword,
                         onValueChange = { editPassword = it },
@@ -825,14 +1057,16 @@ fun ConnectModal(
             confirmButton = {
                 Button(
                     onClick = {
-                        if (editSsid.isNotBlank()) {
-                            onEditImportedEntry(entry.id, editSsid.trim(), editPassword)
+                        if (editSsid.isNotBlank() && editPassword.isNotBlank()) {
+                            onEditImportedEntry(entry.id, editSsid, editPassword)
+                            if (password == entry.password) {
+                                password = editPassword
+                            }
                             editingEntry = null
                         }
-                    },
-                    enabled = editSsid.isNotBlank()
+                    }
                 ) {
-                    Text("Save Changes")
+                    Text("Save")
                 }
             },
             dismissButton = {
@@ -840,6 +1074,175 @@ fun ConnectModal(
                     Text("Cancel")
                 }
             }
+        )
+    }
+}
+
+/**
+ * Prominent Material 3 Result Card for a Successful Authorized Wi-Fi Connection.
+ * Displayed directly on the connection screen below the password input area.
+ */
+@Composable
+fun SuccessfulConnectionCard(
+    result: ConnectionResultInfo,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag("successful_connection_result_card"),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = SignalGreen.copy(alpha = 0.12f)
+        ),
+        border = BorderStroke(1.5.dp, SignalGreen.copy(alpha = 0.45f))
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            // Header: Success Icon + Title
+            Row(
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(SignalGreen.copy(alpha = 0.2f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.CheckCircle,
+                        contentDescription = null,
+                        tint = SignalGreen,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(10.dp))
+                Column {
+                    Text(
+                        text = "✓ Password Found / Connection Successful",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = SignalGreen
+                    )
+                    Text(
+                        text = "Authorized network connection established",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+            HorizontalDivider(color = SignalGreen.copy(alpha = 0.25f))
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Wi-Fi Name
+            ResultDetailRow(label = "Wi-Fi:", value = result.ssid, isBold = true)
+
+            // Password
+            ResultDetailRow(label = "Password:", value = result.password, isMonospace = true, isBold = true)
+
+            // Password # (if available from TXT / batch, never for manual)
+            if (result.source != "Manually Entered") {
+                val num = result.passwordNumber ?: result.lineNumber
+                num?.let { passNum ->
+                    ResultDetailRow(label = "Password #:", value = SelectedCredentialMetadata.formatNumber(passNum))
+                }
+            }
+
+            // Source
+            ResultDetailRow(label = "Source:", value = result.source)
+
+            // Line number / Batch information (never for manual)
+            if (result.source != "Manually Entered") {
+                if (result.batchNumber != null) {
+                    result.formatBatch()?.let { batchStr ->
+                        ResultDetailRow(label = "Batch:", value = batchStr)
+                    }
+                    result.formatPositionInBatch()?.let { posStr ->
+                        ResultDetailRow(label = "Position in batch:", value = posStr)
+                    }
+                    result.formatLine()?.let { globalLineStr ->
+                        ResultDetailRow(label = "Global line:", value = globalLineStr)
+                    }
+                } else if (result.lineNumber != null) {
+                    result.formatLine()?.let { lineStr ->
+                        ResultDetailRow(label = "Line:", value = lineStr)
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+            HorizontalDivider(color = SignalGreen.copy(alpha = 0.15f))
+            Spacer(modifier = Modifier.height(6.dp))
+
+            // IP Address (local IP when available)
+            if (!result.ipAddress.isNullOrBlank()) {
+                ResultDetailRow(label = "IP Address:", value = result.ipAddress, isMonospace = true)
+            }
+
+            // Status: Connected
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 3.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Status:",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .clip(CircleShape)
+                            .background(SignalGreen)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = result.status,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = SignalGreen
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ResultDetailRow(
+    label: String,
+    value: String,
+    isBold: Boolean = false,
+    isMonospace: Boolean = false
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 3.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = if (isBold) FontWeight.Bold else FontWeight.Normal,
+            fontFamily = if (isMonospace) FontFamily.Monospace else FontFamily.Default,
+            color = MaterialTheme.colorScheme.onSurface
         )
     }
 }

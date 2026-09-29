@@ -56,7 +56,22 @@ object PasswordFileParser {
                     }
                 }
             }
-            return ParseResult.Success(entries, totalLines, skippedLines)
+
+            val finalTotal = totalLines.toLong()
+            val totalBatches = if (finalTotal > 0) ((finalTotal - 1) / 500) + 1 else 1L
+            val finalizedEntries = entries.map { entry ->
+                val lineNum = entry.lineNumber ?: 1L
+                val batchNum = ((lineNum - 1) / 500) + 1
+                val posInBatch = (((lineNum - 1) % 500) + 1).toInt()
+                entry.copy(
+                    totalLines = finalTotal,
+                    batchNumber = batchNum,
+                    totalBatches = totalBatches,
+                    positionInBatch = posInBatch
+                )
+            }
+
+            return ParseResult.Success(finalizedEntries, totalLines, skippedLines)
         } catch (e: Exception) {
             return ParseResult.Error(e.localizedMessage ?: "Failed to read file")
         }
@@ -95,7 +110,9 @@ object PasswordFileParser {
                         ssid = first,
                         password = second,
                         securityType = securityType,
-                        isValid = true
+                        isValid = true,
+                        lineNumber = index.toLong(),
+                        source = "Imported List"
                     )
                 }
             }
@@ -108,7 +125,9 @@ object PasswordFileParser {
                 ssid = "Password #$index",
                 password = plainPassword,
                 securityType = WifiSecurityType.WPA2_PSK,
-                isValid = true
+                isValid = true,
+                lineNumber = index.toLong(),
+                source = "Imported TXT"
             )
         }
 
