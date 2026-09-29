@@ -21,6 +21,7 @@ import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.CellTower
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Dns
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.NetworkCheck
 import androidx.compose.material.icons.filled.Router
 import androidx.compose.material.icons.filled.Speed
@@ -67,20 +68,20 @@ fun DiagnosticsScreen(
             .testTag("diagnostics_screen")
     ) {
         Text(
-            text = "Wi-Fi Diagnostics & Link Health",
+            text = "Network Information & Diagnostics",
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onSurface
         )
         Text(
-            text = "Real-time RF metrics, gateway routing, and band distribution",
+            text = "Authorized network connection parameters, subnet routing, and link health",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Signal Quality Gauge Card
+        // Signal Quality & Status Card
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(20.dp),
@@ -121,7 +122,7 @@ fun DiagnosticsScreen(
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
-                            text = if (currentInfo.isConnected) "Link Signal: ${currentInfo.rssi} dBm (${currentInfo.band})" else "Connect to a network to inspect live link health",
+                            text = if (currentInfo.isConnected) "Link Signal: ${currentInfo.rssi} dBm (${currentInfo.band})" else "Connect to a network to inspect live network details",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -161,8 +162,8 @@ fun DiagnosticsScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         MetricBox("Link Speed", "${currentInfo.linkSpeedMbps} Mbps", Modifier.weight(1f))
+                        MetricBox("Band", currentInfo.band.ifBlank { "2.4 GHz" }, Modifier.weight(1f))
                         MetricBox("Frequency", if (currentInfo.frequency > 0) "${currentInfo.frequency} MHz" else "N/A", Modifier.weight(1f))
-                        MetricBox("Signal", "${currentInfo.rssi} dBm", Modifier.weight(1f))
                     }
                 }
             }
@@ -170,7 +171,7 @@ fun DiagnosticsScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // IP & Routing Configuration Card
+        // Network Details & Subnet Card
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(20.dp),
@@ -183,7 +184,7 @@ fun DiagnosticsScreen(
                     Icon(Icons.Filled.Router, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "Network IP & Routing Details",
+                        text = "Network Details & Subnet",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
@@ -191,11 +192,13 @@ fun DiagnosticsScreen(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                DetailRow("Assigned IP Address", currentInfo.ipAddress.ifBlank { "Unassigned" })
-                DetailRow("Default Gateway / Router", currentInfo.gateway.ifBlank { "N/A" })
-                DetailRow("Subnet Netmask", currentInfo.netmask.ifBlank { "255.255.255.0" })
+                DetailRow("Connected SSID", currentInfo.ssid.ifBlank { "Disconnected" })
+                DetailRow("Local IP Address", currentInfo.ipAddress.ifBlank { "Unassigned" })
+                DetailRow("Gateway / Router IP", currentInfo.gateway.ifBlank { "N/A" })
+                DetailRow("Subnet Netmask", "${currentInfo.netmask.ifBlank { "255.255.255.0" }} (/24)")
                 DetailRow("Primary DNS Resolver", currentInfo.dns.ifBlank { "System Default" })
-                DetailRow("BSSID / MAC Access Point", currentInfo.bssid.ifBlank { "Private MAC randomized" })
+                DetailRow("Connection Protocol", if (currentInfo.band.contains("6")) "Wi-Fi 6E (802.11ax)" else if (currentInfo.band.contains("5")) "Wi-Fi 5 (802.11ac)" else "Wi-Fi 4 (802.11n)")
+                DetailRow("Internet Status", if (currentInfo.isConnected) "Online (Validated)" else "Offline")
             }
         }
 
@@ -220,10 +223,10 @@ fun DiagnosticsScreen(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
                 Text(
-                    text = "Number of active Wi-Fi networks in your environment across bands:",
+                    text = "Active access points in your immediate radio environment:",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -234,9 +237,9 @@ fun DiagnosticsScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    BandCard("2.4 GHz", "$count24GHz APs", "Legacy & IoT", Modifier.weight(1f))
+                    BandCard("2.4 GHz", "$count24GHz APs", "Standard", Modifier.weight(1f))
                     BandCard("5 GHz", "$count5GHz APs", "High Speed", Modifier.weight(1f))
-                    BandCard("6 GHz", "$count6GHz APs", "Wi-Fi 6E/7", Modifier.weight(1f))
+                    BandCard("6 GHz", "$count6GHz APs", "Wi-Fi 6E", Modifier.weight(1f))
                 }
             }
         }

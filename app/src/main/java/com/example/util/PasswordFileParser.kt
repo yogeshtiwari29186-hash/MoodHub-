@@ -11,12 +11,16 @@ object PasswordFileParser {
 
     /**
      * Parses an input stream from a selected TXT or CSV Uri.
-     * Supports formats like:
-     * - SSID,Password
-     * - SSID,Password,SecurityType
-     * - SSID=Password
-     * - SSID:Password
-     * - "SSID","Password"
+     * Supports formats:
+     * 1. Single password per line TXT file (e.g. wordlist / password list):
+     *    MySecretPass1
+     *    MySecretPass2
+     * 2. Key-value / CSV lines:
+     *    SSID,Password
+     *    SSID,Password,SecurityType
+     *    SSID=Password
+     *    SSID:Password
+     * Preserves original line ordering.
      */
     fun parseUri(context: Context, uri: Uri): ParseResult {
         val entries = mutableListOf<ImportedEntry>()
@@ -27,6 +31,8 @@ object PasswordFileParser {
             context.contentResolver.openInputStream(uri)?.use { inputStream ->
                 BufferedReader(InputStreamReader(inputStream, Charsets.UTF_8)).use { reader ->
                     var isFirstLine = true
+                    var entryIndex = 0
+
                     reader.forEachLine { rawLine ->
                         totalLines++
                         val line = rawLine.trim()
@@ -34,15 +40,15 @@ object PasswordFileParser {
                             return@forEachLine
                         }
 
-                        // Check if first line is a CSV/TXT header
+                        // Check if first line is a CSV/TXT column header (e.g. "SSID,Password")
                         if (isFirstLine && isHeaderLine(line)) {
                             isFirstLine = false
                             return@forEachLine
                         }
                         isFirstLine = false
 
-                        val parsed = parseLine(line)
-                        if (parsed != null && parsed.ssid.isNotBlank()) {
+                        val parsed = parseLine(line, ++entryIndex)
+                        if (parsed != null && parsed.password.isNotBlank()) {
                             entries.add(parsed)
                         } else {
                             skippedLines++
@@ -62,33 +68,50 @@ object PasswordFileParser {
                 (upper.contains("PASS") || upper.contains("KEY") || upper.contains("SECRET"))
     }
 
-    private fun parseLine(line: String): ImportedEntry? {
-        // Try comma, semicolon, tab, equals, colon delimiters
-        val delimiter = when {
-            line.contains(",") -> ','
-            line.contains(";") -> ';'
-            line.contains("\t") -> '\t'
-            line.contains("=") -> '='
-            line.contains(":") -> ':'
-            else -> return null
-        }
+    private fun parseLine(line: String, index: Int): ImportedEntry? {
+        // Check if line contains a recognizable key-value or CSV delimiter
+        val hasDelimiter = line.contains(",") || line.contains(";") || line.contains("\t") ||
+                line.contains("=") || (line.contains(":") && !line.startsWith("http"))
 
-        val tokens = splitCsvLine(line, delimiter)
-        if (tokens.size >= 2) {
-            val ssid = cleanToken(tokens[0])
-            val password = cleanToken(tokens[1])
-            val securityStr = if (tokens.size >= 3) cleanToken(tokens[2]) else "WPA2"
-            val securityType = WifiSecurityType.fromCapabilities(securityStr)
+        if (hasDelimiter) {
+            val delimiter = when {
+                line.contains(",") -> ','
+                line.contains(";") -> ';'
+                line.contains("\t") -> '\t'
+                line.contains("=") -> '='
+                line.contains(":") -> ':'
+                else -> ','
+            }
 
-            if (ssid.isNotEmpty()) {
-                return ImportedEntry(
-                    ssid = ssid,
-                    password = password,
-                    securityType = securityType,
-                    isValid = true
-                )
+            val tokens = splitCsvLine(line, delimiter)
+            if (tokens.size >= 2) {
+                val first = cleanToken(tokens[0])
+                val second = cleanToken(tokens[1])
+                val securityStr = if (tokens.size >= 3) cleanToken(tokens[2]) else "WPA2"
+                val securityType = WifiSecurityType.fromCapabilities(securityStr)
+
+                if (first.isNotBlank() && second.isNotBlank()) {
+                    return ImportedEntry(
+                        ssid = first,
+                        password = second,
+                        securityType = securityType,
+                        isValid = true
+                    )
+                }
             }
         }
+
+        // Single password per line format
+        val plainPassword = cleanToken(line)
+        if (plainPassword.isNotBlank()) {
+            return ImportedEntry(
+                ssid = "Password #$index",
+                password = plainPassword,
+                securityType = WifiSecurityType.WPA2_PSK,
+                isValid = true
+            )
+        }
+
         return null
     }
 

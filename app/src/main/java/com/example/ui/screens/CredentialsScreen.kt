@@ -1,5 +1,9 @@
 package com.example.ui.screens
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -17,16 +21,24 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.FastForward
+import androidx.compose.material.icons.filled.FastRewind
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.ViewCarousel
+import androidx.compose.material.icons.filled.ViewList
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.Wifi
@@ -35,6 +47,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -54,8 +67,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
@@ -84,8 +101,13 @@ fun CredentialsScreen(
     onSelectToConnect: (ssid: String, password: String) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     var selectedTab by remember { mutableIntStateOf(0) } // 0: Imported List, 1: Saved Vault
+    var viewMode by remember { mutableStateOf("SINGLE") } // "SINGLE" (1 at a time) or "LIST"
+    var currentSingleIndex by remember { mutableIntStateOf(0) }
     var searchQuery by remember { mutableStateOf("") }
+    var jumpInput by remember { mutableStateOf("") }
+
     var showAddDialog by remember { mutableStateOf(false) }
     var showClearConfirm by remember { mutableStateOf(false) }
 
@@ -121,8 +143,19 @@ fun CredentialsScreen(
     val filteredImported = remember(importedEntries, searchQuery) {
         importedEntries.filter { entry ->
             searchQuery.isBlank() ||
-                    entry.ssid.contains(searchQuery, ignoreCase = true)
+                    entry.ssid.contains(searchQuery, ignoreCase = true) ||
+                    entry.password.contains(searchQuery, ignoreCase = true)
         }
+    }
+
+    val safeSingleIndex = if (filteredImported.isNotEmpty()) {
+        currentSingleIndex.coerceIn(0, filteredImported.size - 1)
+    } else 0
+
+    fun copyToClipboard(text: String) {
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+        clipboard?.setPrimaryClip(ClipData.newPlainText("Wi-Fi Password", text))
+        Toast.makeText(context, "Password copied to clipboard", Toast.LENGTH_SHORT).show()
     }
 
     Column(
@@ -163,20 +196,20 @@ fun CredentialsScreen(
                     Spacer(modifier = Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Password List & Credentials",
+                            text = "Password List & Vault",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
-                            text = "${importedEntries.size} imported • ${credentials.size} in local vault",
+                            text = "${importedEntries.size} imported entries • ${credentials.size} in vault",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.primary
                         )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -191,7 +224,7 @@ fun CredentialsScreen(
                     ) {
                         Icon(Icons.Filled.FileDownload, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Import File")
+                        Text("Import TXT/CSV")
                     }
 
                     FilledTonalButton(
@@ -209,33 +242,7 @@ fun CredentialsScreen(
             }
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // Security Notice Box
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                .padding(10.dp)
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    Icons.Filled.Security,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "Zero automated scanning. Passwords are only used when you explicitly choose to connect.",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(10.dp))
 
         // Tab Navigation: Imported List vs Saved Vault
         TabRow(
@@ -282,7 +289,7 @@ fun CredentialsScreen(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
                 placeholder = {
-                    Text(if (selectedTab == 0) "Search imported entries..." else "Search saved vault...")
+                    Text(if (selectedTab == 0) "Search passwords..." else "Search saved vault...")
                 },
                 leadingIcon = {
                     Icon(Icons.Filled.Search, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -312,9 +319,8 @@ fun CredentialsScreen(
 
         Spacer(modifier = Modifier.height(10.dp))
 
-        // Tab Content
+        // TAB 0: IMPORTED LIST SCREEN (Single Entry mode + Full list mode)
         if (selectedTab == 0) {
-            // TAB 0: IMPORTED LIST SCREEN
             if (filteredImported.isEmpty()) {
                 Box(
                     modifier = Modifier
@@ -331,13 +337,13 @@ fun CredentialsScreen(
                         )
                         Spacer(modifier = Modifier.height(10.dp))
                         Text(
-                            text = if (searchQuery.isNotBlank()) "No matching imported entries" else "No Imported Password File",
+                            text = if (searchQuery.isNotBlank()) "No matching passwords" else "No Passwords Loaded",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "Import a TXT or CSV file with 'SSID,Password' format.",
+                            text = "Import a TXT file (one password per line) or CSV.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -348,123 +354,331 @@ fun CredentialsScreen(
                     }
                 }
             } else {
-                LazyColumn(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                // View Mode selector (Single Entry vs List)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    items(filteredImported, key = { it.id }) { item ->
-                        val isRevealed = revealedPasswords[item.id] == true
-                        val nearbyMatch = nearbyMap[item.ssid.lowercase()]
+                    Text(
+                        text = "Total Entries: ${filteredImported.size}",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
 
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(14.dp),
-                            colors = CardDefaults.cardColors(
-                                containerColor = if (nearbyMatch != null) {
-                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f)
-                                } else {
-                                    MaterialTheme.colorScheme.surfaceContainer
-                                }
-                            )
+                    Row {
+                        FilterChip(
+                            selected = viewMode == "SINGLE",
+                            onClick = { viewMode = "SINGLE" },
+                            label = { Text("Single (1 / ${filteredImported.size})") },
+                            leadingIcon = { Icon(Icons.Filled.ViewCarousel, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        FilterChip(
+                            selected = viewMode == "LIST",
+                            onClick = { viewMode = "LIST" },
+                            label = { Text("List View") },
+                            leadingIcon = { Icon(Icons.Filled.ViewList, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                if (viewMode == "SINGLE") {
+                    val entry = filteredImported[safeSingleIndex]
+                    val isRevealed = revealedPasswords[entry.id] == true
+
+                    // 1-at-a-time Paginator Card per requirement
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        shape = RoundedCornerShape(20.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(18.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.SpaceBetween
                         ) {
+                            // Top: Counter (Current: X / Total)
                             Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(12.dp),
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(
-                                    imageVector = if (nearbyMatch != null) Icons.Filled.Wifi else Icons.Filled.Key,
-                                    contentDescription = null,
-                                    tint = if (nearbyMatch != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(24.dp)
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(MaterialTheme.colorScheme.primaryContainer)
+                                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                                ) {
+                                    Text(
+                                        text = "Current: ${safeSingleIndex + 1} / ${filteredImported.size}",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        fontFamily = FontFamily.Monospace,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                }
+
+                                Row {
+                                    IconButton(
+                                        onClick = {
+                                            editingImported = entry
+                                            editImportSsid = entry.ssid
+                                            editImportPassword = entry.password
+                                        }
+                                    ) {
+                                        Icon(Icons.Filled.Edit, contentDescription = "Edit entry")
+                                    }
+                                    IconButton(
+                                        onClick = { importedToDelete = entry }
+                                    ) {
+                                        Icon(Icons.Filled.Delete, contentDescription = "Delete entry", tint = MaterialTheme.colorScheme.error)
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(14.dp))
+
+                            // Password Box
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+                                    .padding(20.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = entry.ssid,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.outline
+                                )
+                                Spacer(modifier = Modifier.height(6.dp))
+
+                                Text(
+                                    text = if (isRevealed) entry.password else "••••••••••••",
+                                    style = MaterialTheme.typography.headlineMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = MaterialTheme.colorScheme.onSurface
                                 )
 
-                                Spacer(modifier = Modifier.width(12.dp))
+                                Spacer(modifier = Modifier.height(10.dp))
 
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    FilledTonalButton(
+                                        onClick = { revealedPasswords[entry.id] = !isRevealed }
+                                    ) {
+                                        Icon(
+                                            imageVector = if (isRevealed) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(if (isRevealed) "Hide" else "Show")
+                                    }
+
+                                    FilledTonalButton(
+                                        onClick = { copyToClipboard(entry.password) }
+                                    ) {
+                                        Icon(Icons.Filled.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("Copy")
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            // Navigation Controls: First, Prev, Next, Last
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                IconButton(
+                                    onClick = { currentSingleIndex = 0 },
+                                    enabled = safeSingleIndex > 0
+                                ) {
+                                    Icon(Icons.Filled.FastRewind, contentDescription = "First entry")
+                                }
+
+                                Button(
+                                    onClick = { currentSingleIndex = (safeSingleIndex - 1).coerceAtLeast(0) },
+                                    enabled = safeSingleIndex > 0
+                                ) {
+                                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Previous")
+                                }
+
+                                Button(
+                                    onClick = { currentSingleIndex = (safeSingleIndex + 1).coerceAtMost(filteredImported.size - 1) },
+                                    enabled = safeSingleIndex < filteredImported.size - 1
+                                ) {
+                                    Text("Next")
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null)
+                                }
+
+                                IconButton(
+                                    onClick = { currentSingleIndex = filteredImported.size - 1 },
+                                    enabled = safeSingleIndex < filteredImported.size - 1
+                                ) {
+                                    Icon(Icons.Filled.FastForward, contentDescription = "Last entry")
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            // Jump to index row
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                OutlinedTextField(
+                                    value = jumpInput,
+                                    onValueChange = { jumpInput = it },
+                                    placeholder = { Text("Jump to # (1 - ${filteredImported.size})") },
+                                    singleLine = true,
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Go),
+                                    keyboardActions = KeyboardActions(
+                                        onGo = {
+                                            val target = jumpInput.toIntOrNull()
+                                            if (target != null && target in 1..filteredImported.size) {
+                                                currentSingleIndex = target - 1
+                                                jumpInput = ""
+                                            }
+                                        }
+                                    ),
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(10.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                FilledTonalButton(
+                                    onClick = {
+                                        val target = jumpInput.toIntOrNull()
+                                        if (target != null && target in 1..filteredImported.size) {
+                                            currentSingleIndex = target - 1
+                                            jumpInput = ""
+                                        }
+                                    }
+                                ) {
+                                    Text("Go")
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            // Select for Wi-Fi Connection
+                            Button(
+                                onClick = { onSelectToConnect(entry.ssid, entry.password) },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Icon(Icons.Filled.Wifi, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Select for Authorized Wi-Fi Connection")
+                            }
+                        }
+                    }
+                } else {
+                    // Full List Mode
+                    LazyColumn(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(filteredImported.indices.toList()) { idx ->
+                            val item = filteredImported[idx]
+                            val isRevealed = revealedPasswords[item.id] == true
+
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(14.dp),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "#${idx + 1}",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontFamily = FontFamily.Monospace,
+                                        color = MaterialTheme.colorScheme.outline,
+                                        modifier = Modifier.width(36.dp)
+                                    )
+
+                                    Column(modifier = Modifier.weight(1f)) {
                                         Text(
                                             text = item.ssid,
                                             style = MaterialTheme.typography.titleSmall,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.onSurface
+                                            fontWeight = FontWeight.Bold
                                         )
-                                        if (nearbyMatch != null) {
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                            Box(
-                                                modifier = Modifier
-                                                    .clip(RoundedCornerShape(6.dp))
-                                                    .background(SignalGreen.copy(alpha = 0.15f))
-                                                    .padding(horizontal = 6.dp, vertical = 2.dp)
-                                            ) {
-                                                Text(
-                                                    text = "In Range (${nearbyMatch.level} dBm)",
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    color = SignalGreen,
-                                                    fontWeight = FontWeight.Bold
-                                                )
-                                            }
-                                        }
+                                        Text(
+                                            text = if (isRevealed) item.password else "••••••••••••",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontFamily = FontFamily.Monospace,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
                                     }
 
-                                    Spacer(modifier = Modifier.height(2.dp))
+                                    IconButton(
+                                        onClick = { revealedPasswords[item.id] = !isRevealed },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = if (isRevealed) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
 
-                                    Text(
-                                        text = if (isRevealed) item.password else "••••••••••••",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
+                                    IconButton(
+                                        onClick = { copyToClipboard(item.password) },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(Icons.Filled.ContentCopy, contentDescription = "Copy", modifier = Modifier.size(16.dp))
+                                    }
 
-                                // Password visibility toggle
-                                IconButton(
-                                    onClick = { revealedPasswords[item.id] = !isRevealed },
-                                    modifier = Modifier.size(32.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = if (isRevealed) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                }
+                                    IconButton(
+                                        onClick = {
+                                            editingImported = item
+                                            editImportSsid = item.ssid
+                                            editImportPassword = item.password
+                                        },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(Icons.Filled.Edit, contentDescription = "Edit", modifier = Modifier.size(16.dp))
+                                    }
 
-                                // Edit button
-                                IconButton(
-                                    onClick = {
-                                        editingImported = item
-                                        editImportSsid = item.ssid
-                                        editImportPassword = item.password
-                                    },
-                                    modifier = Modifier.size(32.dp)
-                                ) {
-                                    Icon(Icons.Filled.Edit, contentDescription = "Edit", modifier = Modifier.size(16.dp))
-                                }
+                                    IconButton(
+                                        onClick = { importedToDelete = item },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(Icons.Filled.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
+                                    }
 
-                                // Delete button
-                                IconButton(
-                                    onClick = { importedToDelete = item },
-                                    modifier = Modifier.size(32.dp)
-                                ) {
-                                    Icon(
-                                        Icons.Filled.Delete,
-                                        contentDescription = "Delete",
-                                        tint = MaterialTheme.colorScheme.error,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                }
+                                    Spacer(modifier = Modifier.width(4.dp))
 
-                                Spacer(modifier = Modifier.width(4.dp))
-
-                                // Select / Connect button
-                                Button(
-                                    onClick = { onSelectToConnect(item.ssid, item.password) },
-                                    shape = RoundedCornerShape(8.dp),
-                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 4.dp)
-                                ) {
-                                    Text("Select", style = MaterialTheme.typography.labelMedium)
+                                    Button(
+                                        onClick = { onSelectToConnect(item.ssid, item.password) },
+                                        shape = RoundedCornerShape(8.dp),
+                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                                    ) {
+                                        Text("Select", style = MaterialTheme.typography.labelMedium)
+                                    }
                                 }
                             }
                         }
@@ -575,7 +789,6 @@ fun CredentialsScreen(
                                     )
                                 }
 
-                                // Password reveal toggle
                                 IconButton(
                                     onClick = {
                                         val newState = !isRevealed
@@ -593,7 +806,6 @@ fun CredentialsScreen(
                                     )
                                 }
 
-                                // Edit button
                                 IconButton(
                                     onClick = {
                                         val decrypted = decryptedCache.getOrPut(cred.id) { onDecryptPassword(cred) }
@@ -607,7 +819,6 @@ fun CredentialsScreen(
                                     Icon(Icons.Filled.Edit, contentDescription = "Edit", modifier = Modifier.size(16.dp))
                                 }
 
-                                // Delete button
                                 IconButton(
                                     onClick = { credentialToDelete = cred },
                                     modifier = Modifier.size(32.dp)
@@ -622,7 +833,6 @@ fun CredentialsScreen(
 
                                 Spacer(modifier = Modifier.width(4.dp))
 
-                                // Select / Connect button
                                 Button(
                                     onClick = {
                                         val pass = decryptedCache.getOrPut(cred.id) { onDecryptPassword(cred) }
@@ -769,7 +979,7 @@ fun CredentialsScreen(
                     OutlinedTextField(
                         value = editImportSsid,
                         onValueChange = { editImportSsid = it },
-                        label = { Text("SSID") },
+                        label = { Text("SSID / Label") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )

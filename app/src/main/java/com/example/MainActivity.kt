@@ -20,10 +20,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.NetworkCheck
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material.icons.outlined.Devices
 import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material.icons.outlined.NetworkCheck
 import androidx.compose.material.icons.outlined.Settings
@@ -54,8 +56,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.model.WifiNetwork
+import com.example.model.WifiSecurityType
+import com.example.ui.components.AuthorizedRouterTestModal
 import com.example.ui.components.ConnectModal
 import com.example.ui.components.ImportPreviewDialog
+import com.example.ui.screens.ConnectedDevicesScreen
 import com.example.ui.screens.CredentialsScreen
 import com.example.ui.screens.DiagnosticsScreen
 import com.example.ui.screens.NearbyWifiScreen
@@ -100,6 +106,18 @@ fun WifiManagerAppRoot(viewModel: WifiViewModel) {
     val selectedNetwork by viewModel.selectedNetwork.collectAsStateWithLifecycle()
     val importedPreview by viewModel.importedPreview.collectAsStateWithLifecycle()
     val importMessage by viewModel.importMessage.collectAsStateWithLifecycle()
+
+    // Connected Devices state
+    val connectedDevices by viewModel.connectedDevices.collectAsStateWithLifecycle()
+    val isScanningDevices by viewModel.isScanningDevices.collectAsStateWithLifecycle()
+    val deviceScanProgress by viewModel.deviceScanProgress.collectAsStateWithLifecycle()
+    val devicesLastUpdated by viewModel.devicesLastUpdated.collectAsStateWithLifecycle()
+    val autoRefreshDevices by viewModel.autoRefreshDevices.collectAsStateWithLifecycle()
+
+    // Authorized Router Test state
+    val routerTestState by viewModel.routerTestState.collectAsStateWithLifecycle()
+    var showRouterTestModal by remember { mutableStateOf(false) }
+    var routerTestTargetSsid by remember { mutableStateOf("") }
 
     val backgroundMonitoringEnabled by viewModel.backgroundMonitoringEnabled.collectAsStateWithLifecycle()
     val resumeOnBootEnabled by viewModel.resumeOnBootEnabled.collectAsStateWithLifecycle()
@@ -200,8 +218,9 @@ fun WifiManagerAppRoot(viewModel: WifiViewModel) {
                     Text(
                         text = when (selectedTab) {
                             0 -> "WiFi Manager"
-                            1 -> "Password List"
-                            2 -> "Diagnostics"
+                            1 -> "Connected Devices"
+                            2 -> "Password List"
+                            3 -> "Network Details"
                             else -> "Settings"
                         },
                         fontWeight = FontWeight.Bold
@@ -227,42 +246,59 @@ fun WifiManagerAppRoot(viewModel: WifiViewModel) {
                     icon = {
                         Icon(
                             imageVector = if (selectedTab == 0) Icons.Filled.Wifi else Icons.Outlined.Wifi,
-                            contentDescription = "Nearby Wi-Fi"
+                            contentDescription = "Home"
                         )
                     },
-                    label = { Text("Nearby") },
-                    modifier = Modifier.testTag("nav_tab_nearby")
+                    label = { Text("Home") },
+                    modifier = Modifier.testTag("nav_tab_home")
                 )
                 NavigationBarItem(
                     selected = selectedTab == 1,
-                    onClick = { selectedTab = 1 },
+                    onClick = {
+                        selectedTab = 1
+                        if (connectedDevices.isEmpty() && currentInfo.isConnected) {
+                            viewModel.refreshConnectedDevices()
+                        }
+                    },
                     icon = {
                         Icon(
-                            imageVector = if (selectedTab == 1) Icons.Filled.Key else Icons.Outlined.Key,
-                            contentDescription = "Password List"
+                            imageVector = if (selectedTab == 1) Icons.Filled.Devices else Icons.Outlined.Devices,
+                            contentDescription = "Devices"
                         )
                     },
-                    label = { Text("Passwords") },
-                    modifier = Modifier.testTag("nav_tab_passwords")
+                    label = { Text("Devices") },
+                    modifier = Modifier.testTag("nav_tab_devices")
                 )
                 NavigationBarItem(
                     selected = selectedTab == 2,
                     onClick = { selectedTab = 2 },
                     icon = {
                         Icon(
-                            imageVector = if (selectedTab == 2) Icons.Filled.NetworkCheck else Icons.Outlined.NetworkCheck,
-                            contentDescription = "Diagnostics"
+                            imageVector = if (selectedTab == 2) Icons.Filled.Key else Icons.Outlined.Key,
+                            contentDescription = "Passwords"
                         )
                     },
-                    label = { Text("Diagnostics") },
-                    modifier = Modifier.testTag("nav_tab_diagnostics")
+                    label = { Text("Passwords") },
+                    modifier = Modifier.testTag("nav_tab_passwords")
                 )
                 NavigationBarItem(
                     selected = selectedTab == 3,
                     onClick = { selectedTab = 3 },
                     icon = {
                         Icon(
-                            imageVector = if (selectedTab == 3) Icons.Filled.Settings else Icons.Outlined.Settings,
+                            imageVector = if (selectedTab == 3) Icons.Filled.NetworkCheck else Icons.Outlined.NetworkCheck,
+                            contentDescription = "Network"
+                        )
+                    },
+                    label = { Text("Network") },
+                    modifier = Modifier.testTag("nav_tab_network")
+                )
+                NavigationBarItem(
+                    selected = selectedTab == 4,
+                    onClick = { selectedTab = 4 },
+                    icon = {
+                        Icon(
+                            imageVector = if (selectedTab == 4) Icons.Filled.Settings else Icons.Outlined.Settings,
                             contentDescription = "Settings"
                         )
                     },
@@ -283,6 +319,7 @@ fun WifiManagerAppRoot(viewModel: WifiViewModel) {
                     networks = networks,
                     currentInfo = currentInfo,
                     savedCredentials = savedCredentials,
+                    connectedDevicesCount = connectedDevices.size,
                     isScanning = isScanning,
                     isWifiEnabled = isWifiEnabled,
                     isLocationEnabled = isLocationEnabled,
@@ -293,9 +330,30 @@ fun WifiManagerAppRoot(viewModel: WifiViewModel) {
                     onRefreshScan = { viewModel.refreshScan() },
                     onSelectNetwork = { network -> viewModel.selectNetwork(network) },
                     onImportFileClick = { openDocumentPicker() },
+                    onStartTestClick = {
+                        routerTestTargetSsid = currentInfo.ssid.ifBlank { networks.firstOrNull()?.ssid ?: "" }
+                        showRouterTestModal = true
+                    },
+                    onNavigateToDevices = {
+                        selectedTab = 1
+                        if (connectedDevices.isEmpty() && currentInfo.isConnected) {
+                            viewModel.refreshConnectedDevices()
+                        }
+                    },
+                    onNavigateToNetworkDetails = { selectedTab = 3 },
                     onOpenWifiSettings = { viewModel.openWifiSettings() }
                 )
-                1 -> CredentialsScreen(
+                1 -> ConnectedDevicesScreen(
+                    currentWifiInfo = currentInfo,
+                    devices = connectedDevices,
+                    isScanning = isScanningDevices,
+                    scanProgress = deviceScanProgress,
+                    lastUpdated = devicesLastUpdated,
+                    autoRefresh = autoRefreshDevices,
+                    onRefresh = { viewModel.refreshConnectedDevices() },
+                    onToggleAutoRefresh = { enabled -> viewModel.toggleAutoRefreshDevices(enabled) }
+                )
+                2 -> CredentialsScreen(
                     credentials = savedCredentials,
                     importedEntries = importedEntries,
                     nearbyNetworks = networks,
@@ -310,11 +368,11 @@ fun WifiManagerAppRoot(viewModel: WifiViewModel) {
                     onManualAdd = { ssid, pass, notes -> viewModel.saveManualCredential(ssid, pass, notes) },
                     onSelectToConnect = { targetSsid, pass ->
                         val foundNet = networks.find { it.ssid.equals(targetSsid, ignoreCase = true) }
-                            ?: com.example.model.WifiNetwork(
+                            ?: WifiNetwork(
                                 ssid = targetSsid,
                                 bssid = "",
                                 capabilities = "[WPA2-PSK-CCMP]",
-                                securityType = com.example.model.WifiSecurityType.WPA2_PSK,
+                                securityType = WifiSecurityType.WPA2_PSK,
                                 level = -60,
                                 signalLevel = 3,
                                 frequency = 2437,
@@ -324,12 +382,12 @@ fun WifiManagerAppRoot(viewModel: WifiViewModel) {
                         viewModel.selectNetwork(foundNet)
                     }
                 )
-                2 -> DiagnosticsScreen(
+                3 -> DiagnosticsScreen(
                     currentInfo = currentInfo,
                     nearbyNetworks = networks,
                     onOpenWifiSettings = { viewModel.openWifiSettings() }
                 )
-                3 -> SettingsScreen(
+                4 -> SettingsScreen(
                     backgroundMonitoringEnabled = backgroundMonitoringEnabled,
                     resumeOnBootEnabled = resumeOnBootEnabled,
                     themeMode = themeMode,
@@ -342,7 +400,8 @@ fun WifiManagerAppRoot(viewModel: WifiViewModel) {
                             permissionLauncher.launch(arrayOf(Manifest.permission.POST_NOTIFICATIONS))
                         }
                     },
-                    onClearAllData = {
+                    onClearImportedCredentials = { viewModel.clearAllImportedEntries() },
+                    onClearSavedNetworkData = {
                         viewModel.clearAllCredentials()
                         viewModel.clearAllImportedEntries()
                         viewModel.toggleBackgroundMonitoring(false)
@@ -370,8 +429,46 @@ fun WifiManagerAppRoot(viewModel: WifiViewModel) {
                     onConnect = { ssid, password, securityType, saveToVault ->
                         viewModel.connectToNetwork(ssid, password, securityType, saveToVault)
                     },
+                    onCancelConnection = { viewModel.cancelConnection() },
+                    onOpenRouterTest = {
+                        routerTestTargetSsid = network.ssid
+                        showRouterTestModal = true
+                    },
                     onOpenSettings = { viewModel.openWifiSettings() },
                     onDismiss = { viewModel.dismissConnectModal() }
+                )
+            }
+
+            // Authorized Router Test Modal
+            if (showRouterTestModal) {
+                AuthorizedRouterTestModal(
+                    targetSsid = routerTestTargetSsid.ifBlank { currentInfo.ssid.ifBlank { "My Router" } },
+                    securityType = WifiSecurityType.WPA2_PSK,
+                    candidatePasswords = importedEntries.map { it.password },
+                    testState = routerTestState,
+                    onStartTest = { ssid, secType, candidates ->
+                        viewModel.startAuthorizedRouterTest(ssid, secType, candidates)
+                    },
+                    onStopTest = { viewModel.stopAuthorizedRouterTest() },
+                    onUseConfirmedPassword = { confirmedSsid, confirmedPass ->
+                        val targetNet = networks.find { it.ssid.equals(confirmedSsid, ignoreCase = true) }
+                            ?: WifiNetwork(
+                                ssid = confirmedSsid,
+                                bssid = "",
+                                capabilities = "[WPA2-PSK-CCMP]",
+                                securityType = WifiSecurityType.WPA2_PSK,
+                                level = -50,
+                                signalLevel = 4,
+                                frequency = 2437,
+                                bandLabel = "2.4 GHz",
+                                channel = 6
+                            )
+                        viewModel.selectNetwork(targetNet)
+                    },
+                    onDismiss = {
+                        showRouterTestModal = false
+                        viewModel.resetAuthorizedRouterTest()
+                    }
                 )
             }
 

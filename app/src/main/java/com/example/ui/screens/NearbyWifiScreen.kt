@@ -7,6 +7,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,10 +24,14 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LocationOff
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Security
@@ -67,6 +72,7 @@ fun NearbyWifiScreen(
     networks: List<WifiNetwork>,
     currentInfo: CurrentWifiInfo,
     savedCredentials: List<AuthorizedCredential>,
+    connectedDevicesCount: Int,
     isScanning: Boolean,
     isWifiEnabled: Boolean,
     isLocationEnabled: Boolean,
@@ -77,12 +83,15 @@ fun NearbyWifiScreen(
     onRefreshScan: () -> Unit,
     onSelectNetwork: (WifiNetwork) -> Unit,
     onImportFileClick: () -> Unit,
+    onStartTestClick: () -> Unit,
+    onNavigateToDevices: () -> Unit,
+    onNavigateToNetworkDetails: () -> Unit,
     onOpenWifiSettings: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     var searchQuery by remember { mutableStateOf("") }
-    var selectedFilter by remember { mutableStateOf("ALL") } // ALL, 5GHZ, 2.4GHZ, OPEN, SECURED
+    var selectedFilter by remember { mutableStateOf("ALL") }
 
     val savedSsidSet = remember(savedCredentials) {
         savedCredentials.map { it.ssid.lowercase() }.toSet()
@@ -111,9 +120,9 @@ fun NearbyWifiScreen(
             .padding(horizontal = 16.dp)
             .testTag("nearby_wifi_screen")
     ) {
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(10.dp))
 
-        // Active Wi-Fi Status Hero Card
+        // 1. Connected Wi-Fi Hero Card
         ConnectedWifiCard(
             currentInfo = currentInfo,
             onOpenSettings = onOpenWifiSettings
@@ -121,12 +130,110 @@ fun NearbyWifiScreen(
 
         Spacer(modifier = Modifier.height(10.dp))
 
-        // Quick Background Monitoring Toggle on Home
+        // 2. Action Hub: Start Test & Import Password File
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            FilledTonalButton(
+                onClick = onStartTestClick,
+                modifier = Modifier
+                    .weight(1f)
+                    .testTag("start_test_quick_action"),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Start Test", style = MaterialTheme.typography.labelMedium)
+            }
+
+            FilledTonalButton(
+                onClick = onImportFileClick,
+                modifier = Modifier
+                    .weight(1f)
+                    .testTag("import_file_quick_action"),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Icon(Icons.Filled.FileDownload, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Import TXT/CSV", style = MaterialTheme.typography.labelMedium)
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // 3. Quick Overview: Network Details & Connected Devices
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Card(
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable { onNavigateToNetworkDetails() },
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
+            ) {
+                Row(
+                    modifier = Modifier.padding(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Filled.Info,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Network Details", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                        Text(
+                            text = if (currentInfo.isConnected) currentInfo.ipAddress else "Offline",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
+            Card(
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable { onNavigateToDevices() },
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
+            ) {
+                Row(
+                    modifier = Modifier.padding(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Filled.Devices,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Connected Devices", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                        Text(
+                            text = "$connectedDevicesCount hosts detected",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // 4. Background Monitoring Toggle Card
         Card(
             modifier = Modifier
                 .fillMaxWidth()
                 .testTag("home_background_monitoring_card"),
-            shape = RoundedCornerShape(16.dp),
+            shape = RoundedCornerShape(14.dp),
             colors = CardDefaults.cardColors(
                 containerColor = if (backgroundMonitoringEnabled) {
                     MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
@@ -136,7 +243,7 @@ fun NearbyWifiScreen(
             )
         ) {
             Row(
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
@@ -148,7 +255,7 @@ fun NearbyWifiScreen(
                         imageVector = Icons.Filled.Notifications,
                         contentDescription = null,
                         tint = if (backgroundMonitoringEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(22.dp)
+                        modifier = Modifier.size(20.dp)
                     )
                     Spacer(modifier = Modifier.width(10.dp))
                     Column {
@@ -168,7 +275,9 @@ fun NearbyWifiScreen(
                 Switch(
                     checked = backgroundMonitoringEnabled,
                     onCheckedChange = onToggleBackgroundMonitoring,
-                    modifier = Modifier.testTag("home_background_monitoring_switch")
+                    modifier = Modifier
+                        .size(36.dp)
+                        .testTag("home_background_monitoring_switch")
                 )
             }
         }
@@ -261,7 +370,7 @@ fun NearbyWifiScreen(
             Spacer(modifier = Modifier.height(10.dp))
         }
 
-        // Section Title, Refresh Button, and Import Button
+        // Section Title & Refresh Button
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -269,7 +378,7 @@ fun NearbyWifiScreen(
         ) {
             Column {
                 Text(
-                    text = "Nearby Networks",
+                    text = "Nearby Wi-Fi Networks",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
@@ -281,50 +390,32 @@ fun NearbyWifiScreen(
                 )
             }
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                FilledTonalButton(
-                    onClick = onImportFileClick,
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.testTag("import_file_quick_button")
-                ) {
-                    Icon(
-                        Icons.Filled.FileDownload,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp)
+            IconButton(
+                onClick = onRefreshScan,
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .testTag("refresh_scan_button")
+            ) {
+                if (isScanning) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.primary
                     )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Import File", style = MaterialTheme.typography.labelMedium)
-                }
-
-                Spacer(modifier = Modifier.width(8.dp))
-
-                IconButton(
-                    onClick = onRefreshScan,
-                    modifier = Modifier
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.surfaceVariant)
-                        .testTag("refresh_scan_button")
-                ) {
-                    if (isScanning) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(20.dp),
-                            strokeWidth = 2.dp,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    } else {
-                        Icon(
-                            Icons.Filled.Refresh,
-                            contentDescription = "Refresh Wi-Fi Scan",
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                    }
+                } else {
+                    Icon(
+                        Icons.Filled.Refresh,
+                        contentDescription = "Refresh Wi-Fi Scan",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(10.dp))
+        Spacer(modifier = Modifier.height(8.dp))
 
-        // Search & Filter Bar
+        // Search Bar
         OutlinedTextField(
             value = searchQuery,
             onValueChange = { searchQuery = it },
@@ -333,13 +424,13 @@ fun NearbyWifiScreen(
                 Icon(Icons.Filled.Search, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
             },
             singleLine = true,
-            shape = RoundedCornerShape(14.dp),
+            shape = RoundedCornerShape(12.dp),
             modifier = Modifier
                 .fillMaxWidth()
                 .testTag("search_wifi_input")
         )
 
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(6.dp))
 
         // Filter chips
         Row(
@@ -373,7 +464,7 @@ fun NearbyWifiScreen(
             )
         }
 
-        Spacer(modifier = Modifier.height(10.dp))
+        Spacer(modifier = Modifier.height(8.dp))
 
         // Network List
         if (filteredNetworks.isEmpty()) {
@@ -388,22 +479,16 @@ fun NearbyWifiScreen(
                         imageVector = Icons.Filled.Wifi,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.outline,
-                        modifier = Modifier.size(54.dp)
+                        modifier = Modifier.size(48.dp)
                     )
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
                     Text(
                         text = if (searchQuery.isNotBlank()) "No networks match '$searchQuery'" else "No Wi-Fi Networks Found",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "Tap refresh or verify Wi-Fi and Location are active.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
                     FilledTonalButton(onClick = onRefreshScan) {
                         Text("Rescan Networks")
                     }

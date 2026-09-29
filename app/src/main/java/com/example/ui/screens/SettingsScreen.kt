@@ -22,20 +22,18 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Brightness4
-import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Power
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Shield
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -68,12 +66,15 @@ fun SettingsScreen(
     onToggleResumeOnBoot: (Boolean) -> Unit,
     onSetThemeMode: (String) -> Unit,
     onRequestNotificationPermission: () -> Unit,
-    onClearAllData: () -> Unit,
+    onClearImportedCredentials: () -> Unit,
+    onClearSavedNetworkData: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val scrollState = rememberScrollState()
-    var showClearDataDialog by remember { mutableStateOf(false) }
+
+    var showClearImportedDialog by remember { mutableStateOf(false) }
+    var showClearVaultDialog by remember { mutableStateOf(false) }
 
     Column(
         modifier = modifier
@@ -89,14 +90,14 @@ fun SettingsScreen(
             color = MaterialTheme.colorScheme.onSurface
         )
         Text(
-            text = "Background service, security parameters, and theme preferences",
+            text = "Background service, security parameters, and data controls",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
 
         Spacer(modifier = Modifier.height(18.dp))
 
-        // Background Monitoring Section
+        // 1. Background Monitoring Section
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(20.dp),
@@ -128,7 +129,7 @@ fun SettingsScreen(
 
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Background Connection Monitoring",
+                            text = "Background Monitoring",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
@@ -161,9 +162,9 @@ fun SettingsScreen(
                         .padding(10.dp)
                 ) {
                     Text(
-                        text = "• Uses Android official Foreground Service with persistent notification.\n" +
-                                "• Zero battery drain: Event-driven status monitoring (no continuous scan loops).\n" +
-                                "• Notification includes 'Stop Monitoring' action to terminate anytime.",
+                        text = "• Uses Android Foreground Service with low-priority status notification.\n" +
+                                "• Event-driven network listener (zero battery drain from scan loops).\n" +
+                                "• Includes prominent 'Stop Monitoring' action in notification.",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -218,7 +219,97 @@ fun SettingsScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Appearance / Theme Section
+        // 2. Data Management: Clear Imported & Clear Saved Network Data
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainer
+            )
+        ) {
+            Column(modifier = Modifier.padding(18.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = "Data Management",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text(
+                    text = "Control imported password lists and saved network credentials:",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                OutlinedButton(
+                    onClick = { showClearImportedDialog = true },
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Clear Imported Credentials List")
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                OutlinedButton(
+                    onClick = { showClearVaultDialog = true },
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Filled.DeleteForever, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Clear Saved Network Data & Vault")
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // 3. Privacy Information & Security
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainer
+            )
+        ) {
+            Column(modifier = Modifier.padding(18.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.Shield, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = "Privacy & Security Policy",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Text(
+                    text = "• Credential Vault Encryption: Stored credentials are encrypted locally using AES-GCM.\n" +
+                            "• Zero Remote Transmission: Passwords and network info are never sent to external servers or telemetry services.\n" +
+                            "• No Hidden Guessing: The app never tests credentials silently or runs brute-force scans against unauthorized networks.\n" +
+                            "• Accurate Network Visibility: Device discovery only scans the local subnet of your authorized Wi-Fi and never displays fabricated names.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // 4. Appearance / Theme Section
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(20.dp),
@@ -246,20 +337,17 @@ fun SettingsScreen(
                     FilterChip(
                         selected = themeMode == UserPreferencesRepository.THEME_SYSTEM,
                         onClick = { onSetThemeMode(UserPreferencesRepository.THEME_SYSTEM) },
-                        label = { Text("System Default") },
-                        modifier = Modifier.testTag("theme_system_chip")
+                        label = { Text("System Default") }
                     )
                     FilterChip(
                         selected = themeMode == UserPreferencesRepository.THEME_DARK,
                         onClick = { onSetThemeMode(UserPreferencesRepository.THEME_DARK) },
-                        label = { Text("Dark Theme") },
-                        modifier = Modifier.testTag("theme_dark_chip")
+                        label = { Text("Dark") }
                     )
                     FilterChip(
                         selected = themeMode == UserPreferencesRepository.THEME_LIGHT,
                         onClick = { onSetThemeMode(UserPreferencesRepository.THEME_LIGHT) },
-                        label = { Text("Light Theme") },
-                        modifier = Modifier.testTag("theme_light_chip")
+                        label = { Text("Light") }
                     )
                 }
             }
@@ -267,56 +355,7 @@ fun SettingsScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Security & Privacy Policy Card
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainer
-            )
-        ) {
-            Column(modifier = Modifier.padding(18.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.Shield, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Text(
-                        text = "Security & Privacy Guarantee",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                Text(
-                    text = "• Credential Vault Encryption: Stored credentials are encrypted using industry-standard AES-GCM.\n" +
-                            "• Zero Telemetry: Passwords are never sent to external servers, cloud services, or logs.\n" +
-                            "• Strictly Authorized Use: The app does NOT perform brute-force attacks, dictionary scans, or automatic guessing.\n" +
-                            "• Local Storage Only: Imported files are processed in memory and only retained if you explicitly save them to your vault.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                OutlinedButton(
-                    onClick = { showClearDataDialog = true },
-                    shape = RoundedCornerShape(12.dp),
-                    colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
-                        contentColor = MaterialTheme.colorScheme.error
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(Icons.Filled.DeleteForever, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Clear All Saved Credentials & Data")
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // System Settings & Info Card
+        // 5. About Card
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(20.dp),
@@ -335,53 +374,60 @@ fun SettingsScreen(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
                 Text(
-                    text = "Version 1.0 (Build 100)\nBuilt with Kotlin, Jetpack Compose, Material 3, Room, and modern Android Wi-Fi APIs.",
+                    text = "WiFi Manager v1.1\nEngineered with Jetpack Compose, Material 3, Coroutines, Room AES-GCM, and official Android Wi-Fi & Network APIs.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                FilledTonalButton(
-                    onClick = {
-                        try {
-                            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                                data = Uri.fromParts("package", context.packageName, null)
-                            }
-                            context.startActivity(intent)
-                        } catch (_: Exception) {}
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Text("Manage App Permissions in Android Settings")
-                }
             }
         }
 
         Spacer(modifier = Modifier.height(30.dp))
     }
 
-    if (showClearDataDialog) {
+    if (showClearImportedDialog) {
         AlertDialog(
-            onDismissRequest = { showClearDataDialog = false },
-            title = { Text("Clear All Data?") },
-            text = { Text("This will permanently delete all saved network credentials and reset your settings. This cannot be undone.") },
+            onDismissRequest = { showClearImportedDialog = false },
+            title = { Text("Clear Imported Credentials?") },
+            text = { Text("This will remove all currently imported password entries from memory.") },
             confirmButton = {
                 Button(
                     onClick = {
-                        onClearAllData()
-                        showClearDataDialog = false
+                        onClearImportedCredentials()
+                        showClearImportedDialog = false
                     }
                 ) {
-                    Text("Confirm Clear")
+                    Text("Clear")
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showClearDataDialog = false }) {
+                TextButton(onClick = { showClearImportedDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (showClearVaultDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearVaultDialog = false },
+            title = { Text("Clear Saved Network Data?") },
+            text = { Text("This will permanently remove all saved network credentials and vault data from local storage.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onClearSavedNetworkData()
+                        showClearVaultDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Delete All Data")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearVaultDialog = false }) {
                     Text("Cancel")
                 }
             }

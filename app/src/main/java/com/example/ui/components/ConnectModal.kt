@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Password
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.Wifi
@@ -89,6 +90,8 @@ fun ConnectModal(
     onEditImportedEntry: (id: String, newSsid: String, newPassword: String) -> Unit,
     onDeleteImportedEntry: (id: String) -> Unit,
     onConnect: (ssid: String, password: String, securityType: WifiSecurityType, saveToVault: Boolean) -> Unit,
+    onCancelConnection: () -> Unit,
+    onOpenRouterTest: () -> Unit,
     onOpenSettings: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier
@@ -205,25 +208,43 @@ fun ConnectModal(
                                 .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
                                 .padding(12.dp)
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(24.dp),
-                                    strokeWidth = 2.5.dp,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Column {
-                                    Text(
-                                        text = "Connecting to ${connectionState.ssid}...",
-                                        style = MaterialTheme.typography.labelLarge,
-                                        fontWeight = FontWeight.Bold,
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(
+                                    modifier = Modifier.weight(1f),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(24.dp),
+                                        strokeWidth = 2.5.dp,
                                         color = MaterialTheme.colorScheme.primary
                                     )
-                                    Text(
-                                        text = "Android is negotiating Wi-Fi credentials.",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Column {
+                                        Text(
+                                            text = "Connecting to ${connectionState.ssid}...",
+                                            style = MaterialTheme.typography.labelLarge,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                        Text(
+                                            text = "Android is negotiating Wi-Fi credentials.",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+
+                                OutlinedButton(
+                                    onClick = onCancelConnection,
+                                    shape = RoundedCornerShape(8.dp),
+                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                    modifier = Modifier.testTag("cancel_ongoing_connection_button")
+                                ) {
+                                    Text("Stop", color = MaterialTheme.colorScheme.error)
                                 }
                             }
                         }
@@ -478,30 +499,60 @@ fun ConnectModal(
                                 Text("Cancel")
                             }
 
-                            Button(
-                                onClick = {
-                                    onConnect(network.ssid, password, network.securityType, saveToVault)
-                                },
-                                modifier = Modifier
-                                    .weight(1.3f)
-                                    .testTag("confirm_connect_button"),
-                                shape = RoundedCornerShape(12.dp),
-                                enabled = (isOpenNetwork || password.length >= 8) &&
-                                        connectionState !is WifiConnectionState.Connecting
-                            ) {
-                                Text("Connect")
+                            if (connectionState is WifiConnectionState.Connecting) {
+                                Button(
+                                    onClick = onCancelConnection,
+                                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                                        containerColor = MaterialTheme.colorScheme.error
+                                    ),
+                                    modifier = Modifier
+                                        .weight(1.3f)
+                                        .testTag("stop_connecting_button"),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Text("Stop Connecting")
+                                }
+                            } else {
+                                Button(
+                                    onClick = {
+                                        onConnect(network.ssid, password, network.securityType, saveToVault)
+                                    },
+                                    modifier = Modifier
+                                        .weight(1.3f)
+                                        .testTag("confirm_connect_button"),
+                                    shape = RoundedCornerShape(12.dp),
+                                    enabled = (isOpenNetwork || password.length >= 8)
+                                ) {
+                                    Text("Connect")
+                                }
                             }
                         }
 
                         Spacer(modifier = Modifier.height(10.dp))
-                        FilledTonalButton(
-                            onClick = onOpenSettings,
+
+                        Row(
                             modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp)
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Connect via Android Settings")
+                            FilledTonalButton(
+                                onClick = onOpenRouterTest,
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Icon(Icons.Filled.Security, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Start Test", style = MaterialTheme.typography.labelMedium)
+                            }
+
+                            FilledTonalButton(
+                                onClick = onOpenSettings,
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Settings", style = MaterialTheme.typography.labelMedium)
+                            }
                         }
                     }
                 }

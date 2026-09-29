@@ -6,19 +6,24 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.WifiManagerApp
 import com.example.model.AuthorizedCredential
+import com.example.model.ConnectedDevice
 import com.example.model.CurrentWifiInfo
 import com.example.model.ImportedEntry
 import com.example.model.WifiNetwork
 import com.example.model.WifiSecurityType
 import com.example.service.WifiMonitoringService
 import com.example.util.PasswordFileParser
+import com.example.wifi.AuthorizedRouterTestManager
 import com.example.wifi.WifiConnectionState
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -29,6 +34,8 @@ class WifiViewModel(application: Application) : AndroidViewModel(application) {
     private val connector = app.wifiConnector
     private val credentialRepo = app.credentialRepository
     private val prefsRepo = app.preferencesRepository
+    private val deviceScanner = app.networkDeviceScanner
+    val routerTestManager = app.authorizedRouterTestManager
 
     // Scanner & Networks
     private val _networks = MutableStateFlow<List<WifiNetwork>>(emptyList())
@@ -66,6 +73,28 @@ class WifiViewModel(application: Application) : AndroidViewModel(application) {
     private val _importMessage = MutableStateFlow<String?>(null)
     val importMessage: StateFlow<String?> = _importMessage.asStateFlow()
 
+    // Connected Devices Dashboard State
+    private val _connectedDevices = MutableStateFlow<List<ConnectedDevice>>(emptyList())
+    val connectedDevices: StateFlow<List<ConnectedDevice>> = _connectedDevices.asStateFlow()
+
+    private val _isScanningDevices = MutableStateFlow(false)
+    val isScanningDevices: StateFlow<Boolean> = _isScanningDevices.asStateFlow()
+
+    private val _deviceScanProgress = MutableStateFlow(0f)
+    val deviceScanProgress: StateFlow<Float> = _deviceScanProgress.asStateFlow()
+
+    private val _devicesLastUpdated = MutableStateFlow(System.currentTimeMillis())
+    val devicesLastUpdated: StateFlow<Long> = _devicesLastUpdated.asStateFlow()
+
+    private val _autoRefreshDevices = MutableStateFlow(false)
+    val autoRefreshDevices: StateFlow<Boolean> = _autoRefreshDevices.asStateFlow()
+
+    private var deviceScanJob: Job? = null
+    private var autoRefreshJob: Job? = null
+
+    // Authorized Router Test State
+    val routerTestState: StateFlow<AuthorizedRouterTestManager.RouterTestState> = routerTestManager.testState
+
     // Settings
     val backgroundMonitoringEnabled: StateFlow<Boolean> = prefsRepo.backgroundMonitoring
     val resumeOnBootEnabled: StateFlow<Boolean> = prefsRepo.resumeOnBoot
@@ -75,6 +104,7 @@ class WifiViewModel(application: Application) : AndroidViewModel(application) {
         checkHardwareStates()
         refreshScan()
         observeScanResults()
+        refreshConnectedDevices()
     }
 
     fun checkHardwareStates() {
@@ -131,6 +161,10 @@ class WifiViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun cancelConnection() {
+        connector.resetState()
+    }
+
     fun dismissConnectModal() {
         _selectedNetwork.value = null
         connector.resetState()
@@ -138,6 +172,60 @@ class WifiViewModel(application: Application) : AndroidViewModel(application) {
 
     fun openWifiSettings() {
         connector.openWifiSettings()
+    }
+
+    // Connected Devices Scanner
+    fun refreshConnectedDevices() {
+        if (_isScanningDevices.value) return
+        deviceScanJob?.cancel()
+
+        deviceScanJob = viewModelScope.launch {
+            _isScanningDevices.value = true
+            _deviceScanProgress.value = 0f
+
+            deviceScanner.scanLocalSubnetFlow().collect { progress ->
+                _connectedDevices.value = progress.discoveredDevices
+                if (progress.totalCount > 0) {
+                    _deviceScanProgress.value = progress.scannedCount.toFloat() / progress.totalCount
+                }
+                if (progress.isFinished) {
+                    _isScanningDevices.value = false
+                    _devicesLastUpdated.value = System.currentTimeMillis()
+                }
+            }
+        }
+    }
+
+    fun toggleAutoRefreshDevices(enabled: Boolean) {
+        _autoRefreshDevices.value = enabled
+        autoRefreshJob?.cancel()
+        if (enabled) {
+            autoRefreshJob = viewModelScope.launch {
+                while (isActive) {
+                    delay(30000) // 30 seconds interval
+                    if (!_isScanningDevices.value && _currentWifiInfo.value.isConnected) {
+                        refreshConnectedDevices()
+                    }
+                }
+            }
+        }
+    }
+
+    // Authorized Router Test Workflow
+    fun startAuthorizedRouterTest(
+        targetSsid: String,
+        securityType: WifiSecurityType,
+        candidatePasswords: List<String>
+    ) {
+        routerTestManager.startTest(targetSsid, securityType, candidatePasswords)
+    }
+
+    fun stopAuthorizedRouterTest() {
+        routerTestManager.stopTest()
+    }
+
+    fun resetAuthorizedRouterTest() {
+        routerTestManager.resetState()
     }
 
     // Password File Import
@@ -150,7 +238,7 @@ class WifiViewModel(application: Application) : AndroidViewModel(application) {
                         if (result.entries.isEmpty()) {
                             _importMessage.value = "No valid Wi-Fi credentials found in selected file."
                         } else {
-                            val combined = (_importedEntries.value + result.entries).distinctBy { it.ssid.lowercase() }
+                            val combined = (_importedEntries.value + result.entries)
                             _importedEntries.value = combined
                             _importMessage.value = "Imported ${result.entries.size} credentials from file."
                         }
@@ -252,10 +340,6 @@ class WifiViewModel(application: Application) : AndroidViewModel(application) {
         prefsRepo.setThemeMode(mode)
     }
 
-    /**
-     * Safe demo fallback networks if running inside an emulator or restricted sandbox
-     * without active hardware Wi-Fi radio, ensuring all features are testable.
-     */
     private fun getSampleNetworksIfEmpty(): List<WifiNetwork> {
         return listOf(
             WifiNetwork(
