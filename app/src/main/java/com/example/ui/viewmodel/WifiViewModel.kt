@@ -36,6 +36,10 @@ class WifiViewModel(application: Application) : AndroidViewModel(application) {
     private val prefsRepo = app.preferencesRepository
     private val deviceScanner = app.networkDeviceScanner
     val routerTestManager = app.authorizedRouterTestManager
+    val batchRepository = app.passwordBatchRepository
+
+    // Password Batch & Background Streaming State
+    val batchUiState: StateFlow<com.example.model.PasswordBatchUiState> = batchRepository.batchUiState
 
     // Scanner & Networks
     private val _networks = MutableStateFlow<List<WifiNetwork>>(emptyList())
@@ -228,27 +232,93 @@ class WifiViewModel(application: Application) : AndroidViewModel(application) {
         routerTestManager.resetState()
     }
 
-    // Password File Import
+    // Password File Import & Background Processing
     fun handleFileImport(uri: Uri) {
-        viewModelScope.launch(Dispatchers.IO) {
-            val result = PasswordFileParser.parseUri(app, uri)
-            withContext(Dispatchers.Main) {
-                when (result) {
-                    is PasswordFileParser.ParseResult.Success -> {
-                        if (result.entries.isEmpty()) {
-                            _importMessage.value = "No valid Wi-Fi credentials found in selected file."
-                        } else {
-                            val combined = (_importedEntries.value + result.entries)
-                            _importedEntries.value = combined
-                            _importMessage.value = "Imported ${result.entries.size} credentials from file."
-                        }
-                    }
-                    is PasswordFileParser.ParseResult.Error -> {
-                        _importMessage.value = "Error reading file: ${result.message}"
+        try {
+            app.contentResolver.takePersistableUriPermission(
+                uri,
+                android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+            )
+        } catch (_: Exception) {}
+
+        var fileName = "passwords.txt"
+        try {
+            app.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val col = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                    if (col != -1) {
+                        fileName = cursor.getString(col) ?: "passwords.txt"
                     }
                 }
             }
+        } catch (_: Exception) {}
+
+        // Launch Foreground Service for reliable background file processing
+        com.example.service.FileProcessingService.startImport(app, uri, fileName)
+
+        // Also parse first few lines for backwards compatibility with small key-value lists
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = PasswordFileParser.parseUri(app, uri)
+            withContext(Dispatchers.Main) {
+                if (result is PasswordFileParser.ParseResult.Success && result.entries.isNotEmpty() && result.entries.size <= 2000) {
+                    val combined = (_importedEntries.value + result.entries)
+                    _importedEntries.value = combined
+                }
+            }
         }
+    }
+
+    fun pauseBackgroundImport() {
+        com.example.service.FileProcessingService.pauseImport(app)
+    }
+
+    fun resumeBackgroundImport() {
+        val checkpoint = prefsRepo.getImportCheckpoint()
+        val uriStr = checkpoint?.uriString ?: batchUiState.value.fileUri
+        val fileName = checkpoint?.fileName ?: batchUiState.value.fileName.ifBlank { "passwords.txt" }
+        if (uriStr.isNotBlank()) {
+            com.example.service.FileProcessingService.resumeImport(
+                app,
+                android.net.Uri.parse(uriStr),
+                fileName
+            )
+        }
+    }
+
+    fun stopBackgroundImport() {
+        com.example.service.FileProcessingService.stopImport(app)
+    }
+
+    fun loadBatch(batchNumber: Int) {
+        viewModelScope.launch {
+            batchRepository.loadBatch(batchNumber)
+        }
+    }
+
+    fun searchBatchStreaming(query: String) {
+        viewModelScope.launch {
+            batchRepository.searchStreaming(query)
+        }
+    }
+
+    fun clearBatchSearch() {
+        batchRepository.clearSearch()
+    }
+
+    fun selectBatchEntry(entry: com.example.model.BatchPasswordEntry?) {
+        batchRepository.selectEntry(entry)
+    }
+
+    fun clearBatchData() {
+        batchRepository.clearAllData()
+    }
+
+    fun dismissBatchInfoMessage() {
+        batchRepository.dismissInfoMessage()
+    }
+
+    fun dismissBatchErrorMessage() {
+        batchRepository.dismissErrorMessage()
     }
 
     fun updateImportedEntry(id: String, newSsid: String, newPassword: String) {

@@ -2,13 +2,10 @@ package com.example.model
 
 enum class PasswordBatchStatus {
     IDLE,
-    IMPORTING,
     INDEXING,
-    READY,
-    LOADING_BATCH,
-    RUNNING,
-    STOPPING,
+    PAUSED,
     STOPPED,
+    READY,
     ERROR
 }
 
@@ -20,7 +17,9 @@ data class ImportProgressStats(
     val currentBatch: Int = 0,
     val totalBatches: Int = 0,
     val speedEntriesPerSec: Long = 0L,
-    val etaSeconds: Long = 0L
+    val etaSeconds: Long = 0L,
+    val currentByteOffset: Long = 0L,
+    val totalBytes: Long = 0L
 )
 
 data class PasswordBatchUiState(
@@ -41,7 +40,8 @@ data class PasswordBatchUiState(
     val searchResults: List<BatchPasswordEntry> = emptyList(),
     val searchProgress: Float = 0f,
     val errorMessage: String? = null,
-    val infoMessage: String? = null
+    val infoMessage: String? = null,
+    val hasResumableCheckpoint: Boolean = false
 ) {
     val currentRangeStart: Long
         get() = if (totalEntries == 0L) 0L else ((currentBatch - 1) * batchSize + 1L)

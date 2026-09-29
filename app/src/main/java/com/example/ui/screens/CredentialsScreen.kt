@@ -35,8 +35,12 @@ import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.ViewCarousel
 import androidx.compose.material.icons.filled.ViewList
 import androidx.compose.material.icons.filled.Visibility
@@ -50,6 +54,7 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -58,6 +63,9 @@ import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import com.example.model.BatchPasswordEntry
+import com.example.model.PasswordBatchStatus
+import com.example.model.PasswordBatchUiState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
@@ -89,6 +97,7 @@ fun CredentialsScreen(
     credentials: List<AuthorizedCredential>,
     importedEntries: List<ImportedEntry>,
     nearbyNetworks: List<WifiNetwork>,
+    batchState: PasswordBatchUiState = PasswordBatchUiState(),
     onImportFileClick: () -> Unit,
     onDecryptPassword: (AuthorizedCredential) -> String,
     onDeleteCredential: (Long) -> Unit,
@@ -99,6 +108,14 @@ fun CredentialsScreen(
     onClearAllImported: () -> Unit,
     onManualAdd: (ssid: String, password: String, notes: String) -> Unit,
     onSelectToConnect: (ssid: String, password: String) -> Unit,
+    onPauseImport: () -> Unit = {},
+    onResumeImport: () -> Unit = {},
+    onStopImport: () -> Unit = {},
+    onLoadBatch: (Int) -> Unit = {},
+    onSearchBatchStreaming: (String) -> Unit = {},
+    onClearBatchSearch: () -> Unit = {},
+    onSelectBatchEntry: (BatchPasswordEntry?) -> Unit = {},
+    onClearBatchData: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -244,7 +261,235 @@ fun CredentialsScreen(
 
         Spacer(modifier = Modifier.height(10.dp))
 
+        // Background File Processing Card
+        if (batchState.status != PasswordBatchStatus.IDLE || batchState.hasResumableCheckpoint || batchState.totalEntries > 0) {
+            val stats = batchState.importProgress
+            val numberFormat = java.text.NumberFormat.getNumberInstance()
+            val processedCount = stats?.processedEntries ?: batchState.totalEntries
+            val totalCount = stats?.totalEntries ?: batchState.totalEntries
+            val processedFormatted = numberFormat.format(processedCount)
+            val totalFormatted = if (totalCount > 0) numberFormat.format(totalCount) else "calculating..."
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp)
+                    .testTag("background_file_processing_card"),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = when (batchState.status) {
+                        PasswordBatchStatus.INDEXING -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+                        PasswordBatchStatus.PAUSED -> MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.5f)
+                        PasswordBatchStatus.READY -> MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f)
+                        PasswordBatchStatus.ERROR -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f)
+                        else -> MaterialTheme.colorScheme.surfaceContainerHigh
+                    }
+                )
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(10.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        when (batchState.status) {
+                                            PasswordBatchStatus.INDEXING -> SignalGreen
+                                            PasswordBatchStatus.PAUSED -> MaterialTheme.colorScheme.tertiary
+                                            PasswordBatchStatus.READY -> MaterialTheme.colorScheme.primary
+                                            PasswordBatchStatus.ERROR -> MaterialTheme.colorScheme.error
+                                            else -> MaterialTheme.colorScheme.outline
+                                        }
+                                    )
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = when (batchState.status) {
+                                    PasswordBatchStatus.INDEXING -> "Background Processing Active"
+                                    PasswordBatchStatus.PAUSED -> "Processing Paused"
+                                    PasswordBatchStatus.READY -> "File Indexed & Ready"
+                                    PasswordBatchStatus.ERROR -> "Processing Error"
+                                    PasswordBatchStatus.STOPPED -> "Import Stopped"
+                                    else -> "Checkpoint Available"
+                                },
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+
+                        Text(
+                            text = batchState.fileName.ifBlank { "passwords.txt" },
+                            style = MaterialTheme.typography.bodySmall,
+                            fontFamily = FontFamily.Monospace,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Progress Text per Prompt Requirement: "2,450,000 / 10,000,000 processed"
+                    Text(
+                        text = "$processedFormatted / $totalFormatted processed",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.testTag("processed_entries_count_text")
+                    )
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    // Progress Bar
+                    if (batchState.status == PasswordBatchStatus.INDEXING) {
+                        if (stats != null && stats.percentage > 0f) {
+                            LinearProgressIndicator(
+                                progress = { (stats.percentage / 100f).coerceIn(0f, 1f) },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(8.dp)
+                                    .clip(RoundedCornerShape(4.dp))
+                            )
+                        } else {
+                            LinearProgressIndicator(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(8.dp)
+                                    .clip(RoundedCornerShape(4.dp))
+                            )
+                        }
+                    } else if (batchState.status == PasswordBatchStatus.PAUSED) {
+                        LinearProgressIndicator(
+                            progress = { ((stats?.percentage ?: 0f) / 100f).coerceIn(0f, 1f) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(8.dp)
+                                .clip(RoundedCornerShape(4.dp))
+                        )
+                    }
+
+                    // Metrics line: Speed and ETA
+                    if (stats != null && (stats.speedEntriesPerSec > 0 || stats.etaSeconds > 0 || stats.percentage > 0f)) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "${String.format(Locale.US, "%.1f", stats.percentage)}% complete",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            val speedStr = if (stats.speedEntriesPerSec > 0) "${numberFormat.format(stats.speedEntriesPerSec)} entries/s" else ""
+                            val etaStr = if (stats.etaSeconds > 0) "ETA: ${stats.etaSeconds}s" else ""
+                            val extra = listOf(speedStr, etaStr).filter { it.isNotBlank() }.joinToString(" • ")
+                            if (extra.isNotBlank()) {
+                                Text(
+                                    text = extra,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Controls row: Pause/Resume, Stop, etc.
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (batchState.status == PasswordBatchStatus.INDEXING) {
+                            FilledTonalButton(
+                                onClick = onPauseImport,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("pause_import_button"),
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                Icon(Icons.Filled.Pause, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Pause")
+                            }
+
+                            OutlinedButton(
+                                onClick = onStopImport,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("stop_import_button"),
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                Icon(Icons.Filled.Stop, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Stop")
+                            }
+                        } else if (batchState.status == PasswordBatchStatus.PAUSED || batchState.hasResumableCheckpoint) {
+                            Button(
+                                onClick = onResumeImport,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("resume_import_button"),
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Resume")
+                            }
+
+                            OutlinedButton(
+                                onClick = onStopImport,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("cancel_checkpoint_button"),
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                Icon(Icons.Filled.Stop, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Clear")
+                            }
+                        } else if (batchState.status == PasswordBatchStatus.READY) {
+                            Text(
+                                text = "100% indexed in memory-efficient disk index (Batch size: 500).",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.weight(1f)
+                            )
+                            TextButton(
+                                onClick = onClearBatchData,
+                                modifier = Modifier.testTag("clear_batch_index_button")
+                            ) {
+                                Text("Clear Index")
+                            }
+                        }
+                    }
+
+                    if (batchState.status == PasswordBatchStatus.INDEXING) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Safe to minimize: foreground service runs uninterrupted.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(6.dp))
+
         // Tab Navigation: Imported List vs Saved Vault
+        val displayedImportedCount = if (batchState.totalEntries > 0) {
+            java.text.NumberFormat.getNumberInstance().format(batchState.totalEntries)
+        } else {
+            importedEntries.size.toString()
+        }
+
         TabRow(
             selectedTabIndex = selectedTab,
             containerColor = MaterialTheme.colorScheme.surfaceContainer,
@@ -257,7 +502,7 @@ fun CredentialsScreen(
                 onClick = { selectedTab = 0 },
                 text = {
                     Text(
-                        text = "Imported List (${importedEntries.size})",
+                        text = "Imported List ($displayedImportedCount)",
                         fontWeight = if (selectedTab == 0) FontWeight.Bold else FontWeight.Normal,
                         style = MaterialTheme.typography.labelMedium
                     )

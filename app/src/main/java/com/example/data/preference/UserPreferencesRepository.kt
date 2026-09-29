@@ -6,6 +6,16 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
+data class ImportCheckpoint(
+    val uriString: String,
+    val fileName: String,
+    val byteOffset: Long,
+    val processedEntries: Long,
+    val totalEstimatedEntries: Long,
+    val totalBytes: Long,
+    val status: String
+)
+
 class UserPreferencesRepository(context: Context) {
     private val prefs: SharedPreferences = context.getSharedPreferences(
         "wifi_manager_prefs",
@@ -55,6 +65,62 @@ class UserPreferencesRepository(context: Context) {
         _lastPasswordFileName.value = null
     }
 
+    fun saveImportCheckpoint(
+        uriString: String,
+        fileName: String,
+        byteOffset: Long,
+        processedEntries: Long,
+        totalEstimatedEntries: Long,
+        totalBytes: Long,
+        status: String
+    ) {
+        prefs.edit()
+            .putString(KEY_CHECKPOINT_URI, uriString)
+            .putString(KEY_CHECKPOINT_FILE_NAME, fileName)
+            .putLong(KEY_CHECKPOINT_BYTE_OFFSET, byteOffset)
+            .putLong(KEY_CHECKPOINT_PROCESSED_ENTRIES, processedEntries)
+            .putLong(KEY_CHECKPOINT_TOTAL_ESTIMATED, totalEstimatedEntries)
+            .putLong(KEY_CHECKPOINT_TOTAL_BYTES, totalBytes)
+            .putString(KEY_CHECKPOINT_STATUS, status)
+            .apply()
+    }
+
+    fun getImportCheckpoint(): ImportCheckpoint? {
+        val uri = prefs.getString(KEY_CHECKPOINT_URI, null) ?: return null
+        val fileName = prefs.getString(KEY_CHECKPOINT_FILE_NAME, "") ?: ""
+        val byteOffset = prefs.getLong(KEY_CHECKPOINT_BYTE_OFFSET, 0L)
+        val processed = prefs.getLong(KEY_CHECKPOINT_PROCESSED_ENTRIES, 0L)
+        val totalEstimated = prefs.getLong(KEY_CHECKPOINT_TOTAL_ESTIMATED, 0L)
+        val totalBytes = prefs.getLong(KEY_CHECKPOINT_TOTAL_BYTES, 0L)
+        val status = prefs.getString(KEY_CHECKPOINT_STATUS, "PAUSED") ?: "PAUSED"
+
+        return ImportCheckpoint(
+            uriString = uri,
+            fileName = fileName,
+            byteOffset = byteOffset,
+            processedEntries = processed,
+            totalEstimatedEntries = totalEstimated,
+            totalBytes = totalBytes,
+            status = status
+        )
+    }
+
+    fun updateCheckpointStatus(status: String) {
+        prefs.edit().putString(KEY_CHECKPOINT_STATUS, status).apply()
+    }
+
+    fun clearImportCheckpoint() {
+        prefs.edit()
+            .remove(KEY_CHECKPOINT_URI)
+            .remove(KEY_CHECKPOINT_FILE_NAME)
+            .remove(KEY_CHECKPOINT_BYTE_OFFSET)
+            .remove(KEY_CHECKPOINT_PROCESSED_ENTRIES)
+            .remove(KEY_CHECKPOINT_TOTAL_ESTIMATED)
+            .remove(KEY_CHECKPOINT_TOTAL_BYTES)
+            .remove(KEY_CHECKPOINT_STATUS)
+            .apply()
+    }
+
     fun setBackgroundMonitoring(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_BACKGROUND_MONITORING, enabled).apply()
         _backgroundMonitoring.value = enabled
@@ -80,6 +146,14 @@ class UserPreferencesRepository(context: Context) {
         const val KEY_THEME_MODE = "theme_mode"
         const val KEY_LAST_PASSWORD_FILE_URI = "last_pwd_file_uri"
         const val KEY_LAST_PASSWORD_FILE_NAME = "last_pwd_file_name"
+
+        const val KEY_CHECKPOINT_URI = "checkpoint_uri"
+        const val KEY_CHECKPOINT_FILE_NAME = "checkpoint_file_name"
+        const val KEY_CHECKPOINT_BYTE_OFFSET = "checkpoint_byte_offset"
+        const val KEY_CHECKPOINT_PROCESSED_ENTRIES = "checkpoint_processed_entries"
+        const val KEY_CHECKPOINT_TOTAL_ESTIMATED = "checkpoint_total_estimated"
+        const val KEY_CHECKPOINT_TOTAL_BYTES = "checkpoint_total_bytes"
+        const val KEY_CHECKPOINT_STATUS = "checkpoint_status"
 
         const val THEME_SYSTEM = "system"
         const val THEME_DARK = "dark"

@@ -65,12 +65,30 @@
                 android:value="Wi-Fi connection status and link health monitoring" />
         </service>
 
+        <service
+            android:name=".service.FileProcessingService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
         <receiver
             android:name=".receiver.BootReceiver"
             android:enabled="true"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
+            android:name=".receiver.NotificationActionReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.example.receiver.ACTION_STOP_MONITORING" />
+                <action android:name="com.example.receiver.ACTION_PAUSE_IMPORT" />
+                <action android:name="com.example.receiver.ACTION_RESUME_IMPORT" />
+                <action android:name="com.example.receiver.ACTION_STOP_IMPORT" />
             </intent-filter>
         </receiver>
 

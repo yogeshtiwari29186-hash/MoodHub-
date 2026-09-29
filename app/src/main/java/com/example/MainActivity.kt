@@ -106,6 +106,7 @@ fun WifiManagerAppRoot(viewModel: WifiViewModel) {
     val selectedNetwork by viewModel.selectedNetwork.collectAsStateWithLifecycle()
     val importedPreview by viewModel.importedPreview.collectAsStateWithLifecycle()
     val importMessage by viewModel.importMessage.collectAsStateWithLifecycle()
+    val batchUiState by viewModel.batchUiState.collectAsStateWithLifecycle()
 
     // Connected Devices state
     val connectedDevices by viewModel.connectedDevices.collectAsStateWithLifecycle()
@@ -198,6 +199,15 @@ fun WifiManagerAppRoot(viewModel: WifiViewModel) {
                 "*/*"
             )
         )
+    }
+
+    // Handle navigation from notification
+    LaunchedEffect(Unit) {
+        val activity = context as? androidx.activity.ComponentActivity
+        val targetTab = activity?.intent?.getIntExtra("navigate_tab", -1) ?: -1
+        if (targetTab in 0..4) {
+            selectedTab = targetTab
+        }
     }
 
     // Snackbar notifications
@@ -357,6 +367,7 @@ fun WifiManagerAppRoot(viewModel: WifiViewModel) {
                     credentials = savedCredentials,
                     importedEntries = importedEntries,
                     nearbyNetworks = networks,
+                    batchState = batchUiState,
                     onImportFileClick = { openDocumentPicker() },
                     onDecryptPassword = { cred -> viewModel.getDecryptedPassword(cred) },
                     onDeleteCredential = { id -> viewModel.deleteCredential(id) },
@@ -380,7 +391,15 @@ fun WifiManagerAppRoot(viewModel: WifiViewModel) {
                                 channel = 6
                             )
                         viewModel.selectNetwork(foundNet)
-                    }
+                    },
+                    onPauseImport = { viewModel.pauseBackgroundImport() },
+                    onResumeImport = { viewModel.resumeBackgroundImport() },
+                    onStopImport = { viewModel.stopBackgroundImport() },
+                    onLoadBatch = { batchNum -> viewModel.loadBatch(batchNum) },
+                    onSearchBatchStreaming = { query -> viewModel.searchBatchStreaming(query) },
+                    onClearBatchSearch = { viewModel.clearBatchSearch() },
+                    onSelectBatchEntry = { entry -> viewModel.selectBatchEntry(entry) },
+                    onClearBatchData = { viewModel.clearBatchData() }
                 )
                 3 -> DiagnosticsScreen(
                     currentInfo = currentInfo,
