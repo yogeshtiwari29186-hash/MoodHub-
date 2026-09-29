@@ -68,6 +68,7 @@ data class ConnectionResultInfo(
     val totalBatches: Long? = null,
     val positionInBatch: Int? = null,
     val ipAddress: String? = null,
+    val gateway: String? = null,
     val status: String = "Connected",
     val isConnected: Boolean = true,
     val timestamp: Long = System.currentTimeMillis()

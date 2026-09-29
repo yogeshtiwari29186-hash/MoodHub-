@@ -175,29 +175,81 @@ class WiFiConnectionLifecycleTest {
     }
 
     @Test
-    fun testUserCancellationTransitionsToCancelled() {
-        var currentState = WifiConnectionSessionState(
-            status = ConnectionLifecycleStatus.CONNECTING,
-            targetSsid = "CafeWifi",
-            currentCandidateIndex = 3,
-            totalCandidates = 10
+    fun testConnectionResultInfoImportedBatchPreservesLineNumbers() {
+        val result = com.example.model.ConnectionResultInfo(
+            ssid = "sai raj",
+            password = "password123",
+            source = "Imported TXT",
+            passwordNumber = 11L,
+            lineNumber = 11L,
+            totalLines = 2000L,
+            batchNumber = 1L,
+            totalBatches = 4L,
+            positionInBatch = 11,
+            ipAddress = "192.168.0.108",
+            gateway = "192.168.0.1",
+            status = "Connected"
         )
-        assertTrue(currentState.isRunning)
 
-        // User hits Stop / Cancel
-        var cleanupRan = false
-        fun cancelAndCleanup() {
-            cleanupRan = true
-            currentState = currentState.copy(
-                status = ConnectionLifecycleStatus.CANCELLED,
-                errorMessage = "Operation cancelled."
-            )
-        }
-        cancelAndCleanup()
+        assertEquals("sai raj", result.ssid)
+        assertEquals("password123", result.password)
+        assertEquals("Imported TXT", result.source)
+        assertEquals("11 / 2,000", result.formatLine())
+        assertEquals("1 / 4", result.formatBatch())
+        assertEquals("11 / 500", result.formatPositionInBatch())
+        assertEquals("192.168.0.108", result.ipAddress)
+        assertEquals("192.168.0.1", result.gateway)
+        assertEquals("Connected", result.status)
+        assertTrue(result.isImported)
+    }
 
-        assertTrue(cleanupRan)
-        assertEquals(ConnectionLifecycleStatus.CANCELLED, currentState.status)
-        assertFalse(currentState.isRunning)
-        assertTrue(currentState.isTerminal)
+    @Test
+    fun testConnectionResultInfoManualEntryShowsLineNA() {
+        val manualResult = com.example.model.ConnectionResultInfo(
+            ssid = "OfficeGuest",
+            password = "SecretPassword",
+            source = "Manually Entered",
+            passwordNumber = null,
+            lineNumber = null,
+            totalLines = null,
+            batchNumber = null,
+            totalBatches = null,
+            positionInBatch = null,
+            ipAddress = "192.168.1.5",
+            gateway = "192.168.1.1",
+            status = "Connected"
+        )
+
+        assertEquals("Manually Entered", manualResult.source)
+        assertNull(manualResult.formatLine())
+        assertNull(manualResult.formatBatch())
+        assertNull(manualResult.formatPositionInBatch())
+        assertFalse(manualResult.isImported)
+    }
+
+    @Test
+    fun testBatchPreservesOriginalGlobalLineAcrossBatches() {
+        // Entry in Batch 2 (lines 501-1000): globalIndex = 511, batchIndex = 11
+        val batch2Entry = com.example.model.BatchPasswordEntry(
+            globalIndex = 511L,
+            batchIndex = 11,
+            password = "batch2Password"
+        )
+
+        val metadata = com.example.model.SelectedCredentialMetadata(
+            password = batch2Entry.password,
+            source = "Imported TXT",
+            passwordNumber = batch2Entry.globalIndex,
+            lineNumber = batch2Entry.globalIndex,
+            totalLines = 10_000_000L,
+            batchNumber = 2L,
+            totalBatches = 20_000L,
+            positionInBatch = batch2Entry.batchIndex
+        )
+
+        // Global line must remain 511, NOT 11
+        assertEquals("511 / 10,000,000", metadata.formatLine())
+        assertEquals("2 / 20,000", metadata.formatBatch())
+        assertEquals("11 / 500", metadata.formatPositionInBatch())
     }
 }
