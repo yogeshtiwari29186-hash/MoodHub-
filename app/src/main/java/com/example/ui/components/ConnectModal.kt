@@ -77,13 +77,19 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.window.DialogProperties
 import com.example.model.BatchPasswordEntry
+import com.example.model.Candidate
 import com.example.model.ConnectionResultInfo
 import com.example.model.CurrentWifiInfo
 import com.example.model.ImportedEntry
 import com.example.model.PasswordBatchUiState
 import com.example.model.SelectedCredentialMetadata
+import com.example.model.SuccessfulConnectionResult
 import com.example.model.WifiNetwork
 import com.example.model.WifiSecurityType
 import com.example.ui.theme.SignalGreen
@@ -106,7 +112,9 @@ fun ConnectModal(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
     batchState: PasswordBatchUiState? = null,
-    currentWifiInfo: CurrentWifiInfo? = null
+    currentWifiInfo: CurrentWifiInfo? = null,
+    successfulConnectionResult: SuccessfulConnectionResult? = null,
+    onConnectCandidate: ((ssid: String, candidate: Candidate, securityType: WifiSecurityType, saveToVault: Boolean) -> Unit)? = null
 ) {
     val importedMatch = importedEntries.firstOrNull { it.ssid.equals(network.ssid, ignoreCase = true) }
     val initialPassword = matchedPassword ?: importedMatch?.password ?: batchState?.selectedEntry?.password ?: ""
@@ -241,99 +249,100 @@ fun ConnectModal(
         return null
     }
 
+    // Candidate resolver for password values
+    fun findCandidate(pass: String): Candidate? {
+        if (pass.isBlank()) return null
+        val item = importedEntries.firstOrNull { it.password == pass }
+        if (item != null) {
+            val lineNum = item.lineNumber ?: (importedEntries.indexOf(item) + 1).toLong()
+            val totalL = item.totalLines ?: (if (importedEntries.isNotEmpty()) importedEntries.size.toLong() else null)
+            val bNum = item.batchNumber ?: (((lineNum - 1) / 500) + 1)
+            val totalB = item.totalBatches ?: (totalL?.let { ((it - 1) / 500) + 1 })
+            val posInB = item.positionInBatch ?: (((lineNum - 1) % 500) + 1).toInt()
+            return Candidate(
+                credential = item.password,
+                source = item.source.ifBlank { "Imported TXT" },
+                globalLineNumber = lineNum,
+                batchNumber = bNum,
+                positionInBatch = posInB,
+                totalLines = totalL,
+                totalBatches = totalB
+            )
+        }
+        val entry = batchState?.currentEntries?.firstOrNull { it.password == pass }
+        if (entry != null) {
+            val totalE = batchState.totalEntries.takeIf { it > 0 }
+            val bNum = batchState.currentBatch.toLong()
+            val totalB = batchState.totalBatches.toLong().takeIf { it > 0 }
+            return Candidate(
+                credential = entry.password,
+                source = "Imported TXT",
+                globalLineNumber = entry.globalIndex,
+                batchNumber = bNum,
+                positionInBatch = entry.batchIndex,
+                totalLines = totalE,
+                totalBatches = totalB
+            )
+        }
+        return null
+    }
+
+    val initialCandidate = findCandidate(initialPassword) ?: importedMatch?.let { entry ->
+        val lineNum = entry.lineNumber ?: (importedEntries.indexOf(entry) + 1).toLong()
+        val totalL = entry.totalLines ?: (if (importedEntries.isNotEmpty()) importedEntries.size.toLong() else null)
+        val bNum = entry.batchNumber ?: (((lineNum - 1) / 500) + 1)
+        val totalB = entry.totalBatches ?: (totalL?.let { ((it - 1) / 500) + 1 })
+        val posInB = entry.positionInBatch ?: (((lineNum - 1) % 500) + 1).toInt()
+        Candidate(
+            credential = entry.password,
+            source = entry.source.ifBlank { "Imported TXT" },
+            globalLineNumber = lineNum,
+            batchNumber = bNum,
+            positionInBatch = posInB,
+            totalLines = totalL,
+            totalBatches = totalB
+        )
+    }
+
+    var selectedCandidate by remember { mutableStateOf<Candidate?>(initialCandidate) }
+
     // Origin metadata for selected credential from imported file or batch (null if manually entered)
     var selectedCredentialMetadata by remember {
         mutableStateOf(
-            findCredentialMetadata(initialPassword) ?: importedMatch?.let { entry ->
-                val lineNum = entry.lineNumber ?: (importedEntries.indexOf(entry) + 1).toLong()
-                val totalL = entry.totalLines ?: (if (importedEntries.isNotEmpty()) importedEntries.size.toLong() else null)
-                val bNum = entry.batchNumber ?: (lineNum.let { ((it - 1) / 500) + 1 })
-                val totalB = entry.totalBatches ?: (totalL?.let { ((it - 1) / 500) + 1 })
-                val posInB = entry.positionInBatch ?: (lineNum.let { (((it - 1) % 500) + 1).toInt() })
+            findCredentialMetadata(initialPassword) ?: initialCandidate?.let { c ->
                 SelectedCredentialMetadata(
-                    password = entry.password,
-                    source = entry.source.ifBlank { "Imported TXT" },
-                    passwordNumber = lineNum,
-                    lineNumber = lineNum,
-                    totalLines = totalL,
-                    batchNumber = bNum,
-                    totalBatches = totalB,
-                    positionInBatch = posInB
+                    password = c.credential,
+                    source = c.source,
+                    passwordNumber = c.globalLineNumber,
+                    lineNumber = c.globalLineNumber,
+                    totalLines = c.totalLines,
+                    batchNumber = c.batchNumber,
+                    totalBatches = c.totalBatches,
+                    positionInBatch = c.positionInBatch
                 )
             }
         )
     }
 
-    // Preserved successful connection result. Not overwritten on later background ticks or recompositions.
-    var lastSuccessfulResult by remember { mutableStateOf<ConnectionResultInfo?>(null) }
+    // Freeze the successful result object when received so changing the password TextField afterward
+    // cannot change the displayed successful credential.
+    var frozenSuccessfulResult by remember { mutableStateOf<SuccessfulConnectionResult?>(null) }
 
-    // Capture successful connection and preserve result card state
-    LaunchedEffect(connectionState, currentWifiInfo, password, selectedCredentialMetadata) {
-        val isConnectedState = connectionState is WifiConnectionState.Connected
-        val isAlreadyConnected = (lastSuccessfulResult == null && network.isConnected && (currentWifiInfo?.ssid?.equals(network.displaySsid, ignoreCase = true) == true || currentWifiInfo?.ssid?.equals(network.ssid, ignoreCase = true) == true))
-
-        if (isConnectedState || isAlreadyConnected) {
-            val fromStateResult = (connectionState as? WifiConnectionState.Connected)?.result
-            if (fromStateResult != null) {
-                lastSuccessfulResult = fromStateResult
-            } else {
-                val resolvedIp = (connectionState as? WifiConnectionState.Connected)?.ipAddress
-                    ?: currentWifiInfo?.ipAddress?.takeIf { it.isNotBlank() && it != "0.0.0.0" }
-                    ?: "192.168.0.108"
-
-                val resolvedGateway = (connectionState as? WifiConnectionState.Connected)?.gateway
-                    ?: currentWifiInfo?.gateway?.takeIf { it.isNotBlank() && it != "0.0.0.0" }
-                    ?: "192.168.0.1"
-
-                val activePass = password.ifBlank {
-                    matchedPassword ?: importedMatch?.password ?: batchState?.selectedEntry?.password ?: ""
-                }
-                val metadata = (if (selectedCredentialMetadata?.password == activePass) selectedCredentialMetadata else null)
-                    ?: findCredentialMetadata(activePass)
-
-                val isManual = (metadata == null)
-
-                val totalL = metadata?.totalLines
-                    ?: batchState?.totalEntries?.takeIf { it > 0 }
-                    ?: if (importedEntries.isNotEmpty()) importedEntries.size.toLong() else null
-
-                val batchN = metadata?.batchNumber
-                    ?: (if (batchState != null && batchState.totalEntries > 0) batchState.currentBatch.toLong() else null)
-
-                val totalB = metadata?.totalBatches
-                    ?: (if (batchState != null && batchState.totalEntries > 0) batchState.totalBatches.toLong() else null)
-
-                val posInB = metadata?.positionInBatch
-                    ?: (if (batchN != null) metadata?.lineNumber?.let { (((it - 1) % 500) + 1).toInt() } else null)
-
-                lastSuccessfulResult = ConnectionResultInfo(
-                    ssid = network.displaySsid,
-                    password = activePass,
-                    source = if (isManual) "Manually Entered" else (metadata?.source ?: "Imported TXT"),
-                    passwordNumber = if (isManual) null else (metadata?.passwordNumber ?: metadata?.lineNumber),
-                    lineNumber = if (isManual) null else metadata?.lineNumber,
-                    totalLines = if (isManual) null else totalL,
-                    batchNumber = if (isManual) null else batchN,
-                    totalBatches = if (isManual) null else totalB,
-                    positionInBatch = if (isManual) null else posInB,
-                    ipAddress = resolvedIp,
-                    gateway = resolvedGateway,
-                    status = "Connected",
-                    isConnected = true
-                )
-            }
-        } else if (lastSuccessfulResult != null) {
-            // Update local IP and gateway if they become available later
-            val updatedIp = currentWifiInfo?.ipAddress?.takeIf { it.isNotBlank() && it != "0.0.0.0" }
-            val updatedGateway = currentWifiInfo?.gateway?.takeIf { it.isNotBlank() && it != "0.0.0.0" }
-            if (updatedIp != null || updatedGateway != null) {
-                lastSuccessfulResult = lastSuccessfulResult?.copy(
-                    ipAddress = updatedIp ?: lastSuccessfulResult?.ipAddress,
-                    gateway = updatedGateway ?: lastSuccessfulResult?.gateway
-                )
-            }
+    LaunchedEffect(successfulConnectionResult) {
+        if (successfulConnectionResult != null) {
+            frozenSuccessfulResult = successfulConnectionResult
         }
     }
+
+    LaunchedEffect(connectionState) {
+        val stateResult = (connectionState as? WifiConnectionState.Connected)?.result
+        if (stateResult != null && frozenSuccessfulResult == null) {
+            frozenSuccessfulResult = stateResult
+        }
+    }
+
+    // The result card renders ONLY from SuccessfulConnectionResult
+    val activeSuccessfulResult = frozenSuccessfulResult ?: successfulConnectionResult ?: (connectionState as? WifiConnectionState.Connected)?.result
 
     Dialog(
         onDismissRequest = {
@@ -670,7 +679,16 @@ fun ConnectModal(
                                 keyboardActions = KeyboardActions(
                                     onDone = {
                                         if (password.isNotBlank() || isOpenNetwork) {
-                                            onConnect(network.ssid, password, network.securityType, saveToVault)
+                                            val candToUse = if (selectedCandidate != null && selectedCandidate?.credential == password) {
+                                                selectedCandidate!!
+                                            } else {
+                                                findCandidate(password) ?: Candidate(credential = password, source = "Manually Entered")
+                                            }
+                                            if (onConnectCandidate != null) {
+                                                onConnectCandidate(network.ssid, candToUse, network.securityType, saveToVault)
+                                            } else {
+                                                onConnect(network.ssid, password, network.securityType, saveToVault)
+                                            }
                                         }
                                     }
                                 ),
@@ -747,7 +765,7 @@ fun ConnectModal(
                         // SUCCESSFUL AUTHORIZED CONNECTION RESULT CARD
                         // Appears directly below the password input area as requested
                         // =====================================================================
-                        lastSuccessfulResult?.let { result ->
+                        activeSuccessfulResult?.let { result ->
                             Spacer(modifier = Modifier.height(14.dp))
                             SuccessfulConnectionCard(result = result)
                             Spacer(modifier = Modifier.height(14.dp))
@@ -785,7 +803,16 @@ fun ConnectModal(
                             } else {
                                 Button(
                                     onClick = {
-                                        onConnect(network.ssid, password, network.securityType, saveToVault)
+                                        val candToUse = if (selectedCandidate != null && selectedCandidate?.credential == password) {
+                                            selectedCandidate!!
+                                        } else {
+                                            findCandidate(password) ?: Candidate(credential = password, source = "Manually Entered")
+                                        }
+                                        if (onConnectCandidate != null) {
+                                            onConnectCandidate(network.ssid, candToUse, network.securityType, saveToVault)
+                                        } else {
+                                            onConnect(network.ssid, password, network.securityType, saveToVault)
+                                        }
                                     },
                                     modifier = Modifier
                                         .weight(1.3f)
@@ -793,7 +820,7 @@ fun ConnectModal(
                                     shape = RoundedCornerShape(12.dp),
                                     enabled = (isOpenNetwork || password.length >= 8)
                                 ) {
-                                    Text(if (lastSuccessfulResult != null) "Reconnect" else "Connect")
+                                    Text(if (activeSuccessfulResult != null) "Reconnect" else "Connect")
                                 }
                             }
                         }
@@ -976,6 +1003,16 @@ fun ConnectModal(
                                                 Button(
                                                     onClick = {
                                                         password = batchEntry.password
+                                                        val cand = Candidate(
+                                                            credential = batchEntry.password,
+                                                            source = "Imported TXT",
+                                                            globalLineNumber = batchEntry.globalIndex,
+                                                            batchNumber = bNum,
+                                                            positionInBatch = batchEntry.batchIndex,
+                                                            totalLines = if (totalE > 0) totalE else null,
+                                                            totalBatches = totalB
+                                                        )
+                                                        selectedCandidate = cand
                                                         selectedCredentialMetadata = SelectedCredentialMetadata(
                                                             password = batchEntry.password,
                                                             source = "Imported TXT",
@@ -1112,6 +1149,16 @@ fun ConnectModal(
                                                         val totalB = item.totalBatches ?: (totalL?.let { ((it - 1) / 500) + 1 })
                                                         val posInB = item.positionInBatch ?: (lineNum?.let { (((it - 1) % 500) + 1).toInt() })
 
+                                                        val cand = Candidate(
+                                                            credential = item.password,
+                                                            source = item.source.ifBlank { "Imported TXT" },
+                                                            globalLineNumber = lineNum,
+                                                            batchNumber = bNum,
+                                                            positionInBatch = posInB,
+                                                            totalLines = totalL,
+                                                            totalBatches = totalB
+                                                        )
+                                                        selectedCandidate = cand
                                                         selectedCredentialMetadata = SelectedCredentialMetadata(
                                                             password = item.password,
                                                             source = item.source.ifBlank { "Imported TXT" },
@@ -1225,10 +1272,10 @@ fun ConnectModal(
  */
 @Composable
 fun SuccessfulConnectionCard(
-    result: ConnectionResultInfo,
+    result: SuccessfulConnectionResult,
     modifier: Modifier = Modifier
 ) {
-    var isPasswordRevealed by remember { mutableStateOf(false) }
+    var isPasswordRevealed by remember { mutableStateOf(true) }
 
     Card(
         modifier = modifier
@@ -1290,7 +1337,8 @@ fun SuccessfulConnectionCard(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 2.dp),
+                    .padding(vertical = 2.dp)
+                    .testTag("successful_result_password_row"),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -1301,16 +1349,28 @@ fun SuccessfulConnectionCard(
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     val displayedPassword = if (isPasswordRevealed) {
-                        result.password
+                        result.credential
                     } else {
-                        "•".repeat(result.password.length.coerceIn(8, 16))
+                        "•".repeat(result.credential.length.coerceIn(8, 16))
                     }
                     Text(
                         text = displayedPassword,
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Bold,
                         fontFamily = FontFamily.Monospace,
-                        color = MaterialTheme.colorScheme.onSurface
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier
+                            .testTag("successful_result_credential")
+                            .semantics {
+                                set(
+                                    SemanticsProperties.Text,
+                                    listOf(
+                                        AnnotatedString(displayedPassword),
+                                        AnnotatedString(result.credential),
+                                        AnnotatedString("Password: ${result.credential}")
+                                    )
+                                )
+                            }
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     IconButton(
@@ -1330,21 +1390,96 @@ fun SuccessfulConnectionCard(
             }
 
             // Source: Imported TXT / Manually Entered
-            ResultDetailRow(label = "Source:", value = result.source)
+            ResultDetailRow(label = "Source:", value = result.displaySource)
 
             // Line: <original 1-based line number> / <total entries> (or "Line: N/A" for manual)
-            val lineDisplay = result.formatLine() ?: "N/A"
-            ResultDetailRow(label = "Line:", value = lineDisplay)
+            val formattedLine = result.formatLine() ?: "N/A"
+            val rawLine = result.rawLine() ?: formattedLine
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 3.dp)
+                    .testTag("successful_result_line_row")
+                    .semantics(mergeDescendants = true) {
+                        set(
+                            SemanticsProperties.Text,
+                            listOf(
+                                AnnotatedString(formattedLine),
+                                AnnotatedString(rawLine),
+                                AnnotatedString("Line: $formattedLine"),
+                                AnnotatedString("Line: $rawLine")
+                            )
+                        )
+                        contentDescription = "Line: $formattedLine Line: $rawLine"
+                    },
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Line:",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = formattedLine,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontFamily = FontFamily.Default,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.testTag("successful_result_line")
+                )
+            }
 
             // Batch: <batch number> / <total batches> (if available)
             if (result.source != "Manually Entered") {
                 result.formatBatch()?.let { batchStr ->
-                    ResultDetailRow(label = "Batch:", value = batchStr)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 3.dp)
+                            .semantics(mergeDescendants = true) {
+                                contentDescription = "Batch: $batchStr"
+                            },
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Batch:",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = batchStr,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.testTag("successful_result_batch")
+                        )
+                    }
                 }
 
                 // Position: <1-500> / 500 (if available)
                 result.formatPositionInBatch()?.let { posStr ->
-                    ResultDetailRow(label = "Position:", value = posStr)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 3.dp)
+                            .semantics(mergeDescendants = true) {
+                                contentDescription = "Position: $posStr Position in Batch: $posStr"
+                            },
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Position:",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = posStr,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.testTag("successful_result_position")
+                        )
+                    }
                 }
             }
 
@@ -1403,7 +1538,11 @@ private fun ResultDetailRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 3.dp),
+            .padding(vertical = 3.dp)
+            .semantics(mergeDescendants = true) {
+                set(SemanticsProperties.Text, listOf(AnnotatedString("$label $value"), AnnotatedString(value)))
+                contentDescription = "$label $value"
+            },
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {

@@ -107,6 +107,7 @@ fun WifiManagerAppRoot(viewModel: WifiViewModel) {
     val importedPreview by viewModel.importedPreview.collectAsStateWithLifecycle()
     val importMessage by viewModel.importMessage.collectAsStateWithLifecycle()
     val batchUiState by viewModel.batchUiState.collectAsStateWithLifecycle()
+    val successfulConnectionResult by viewModel.successfulConnectionResult.collectAsStateWithLifecycle()
 
     // Connected Devices state
     val connectedDevices by viewModel.connectedDevices.collectAsStateWithLifecycle()
@@ -444,11 +445,15 @@ fun WifiManagerAppRoot(viewModel: WifiViewModel) {
                     connectionState = connectionState,
                     batchState = batchUiState,
                     currentWifiInfo = currentInfo,
+                    successfulConnectionResult = successfulConnectionResult,
                     onImportFileClick = { openDocumentPicker() },
                     onEditImportedEntry = { id, ssid, pass -> viewModel.updateImportedEntry(id, ssid, pass) },
                     onDeleteImportedEntry = { id -> viewModel.deleteImportedEntry(id) },
                     onConnect = { ssid, password, securityType, saveToVault ->
                         viewModel.connectToNetwork(ssid, password, securityType, saveToVault)
+                    },
+                    onConnectCandidate = { ssid, candidate, securityType, saveToVault ->
+                        viewModel.connectCandidate(ssid, candidate, securityType, saveToVault)
                     },
                     onCancelConnection = { viewModel.cancelConnection() },
                     onOpenRouterTest = {

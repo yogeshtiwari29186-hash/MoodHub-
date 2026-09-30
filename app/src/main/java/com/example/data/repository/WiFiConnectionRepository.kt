@@ -1,7 +1,9 @@
 package com.example.data.repository
 
+import com.example.model.Candidate
 import com.example.model.ConnectionCandidate
 import com.example.model.ConnectionLifecycleStatus
+import com.example.model.SuccessfulConnectionResult
 import com.example.model.WifiConnectionSessionState
 import com.example.model.WifiSecurityType
 import com.example.util.SafeWifiLogger
@@ -34,6 +36,146 @@ class WiFiConnectionRepository(
     private val _sessionState = MutableStateFlow(WifiConnectionSessionState())
     val sessionState: StateFlow<WifiConnectionSessionState> = _sessionState.asStateFlow()
 
+    private val _successfulConnectionResult = MutableStateFlow<SuccessfulConnectionResult?>(null)
+    val successfulConnectionResult: StateFlow<SuccessfulConnectionResult?> = _successfulConnectionResult.asStateFlow()
+
+    private var currentAttemptId: Long = 0L
+
+    /**
+     * Connects to a network using an authorized candidate bundling credential and source metadata.
+     * Guarantees that on SUCCESS, SuccessfulConnectionResult captures THAT candidate's metadata.
+     */
+    fun connectCandidate(
+        ssid: String,
+        candidate: Candidate,
+        securityType: WifiSecurityType,
+        timeoutMs: Long = 25_000L
+    ) {
+        if (ssid.isBlank()) {
+            _sessionState.value = WifiConnectionSessionState(
+                status = ConnectionLifecycleStatus.FAILED,
+                targetSsid = "",
+                errorMessage = "Target SSID cannot be blank."
+            )
+            return
+        }
+
+        val attemptId = ++currentAttemptId
+        cancelCurrentJobs(shouldSetCancelledState = false)
+        wifiConnector.disconnectCurrent()
+        _successfulConnectionResult.value = null
+
+        val startTime = System.currentTimeMillis()
+        val masked = candidate.masked
+        SafeWifiLogger.i(
+            "WiFiConnectionRepository",
+            "Initiating candidate connection [attempt #$attemptId]: SSID='$ssid', source='${candidate.source}', line=${candidate.globalLineNumber}"
+        )
+
+        _sessionState.value = WifiConnectionSessionState(
+            status = ConnectionLifecycleStatus.CONNECTING,
+            targetSsid = ssid,
+            securityType = securityType,
+            currentCandidateIndex = 1,
+            totalCandidates = 1,
+            currentCandidateMasked = masked,
+            statusMessage = "Starting connection to $ssid...",
+            elapsedTimeSeconds = 0L
+        )
+
+        timerJob = repositoryScope.launch {
+            while (isActive) {
+                delay(1000)
+                val elapsed = (System.currentTimeMillis() - startTime) / 1000
+                _sessionState.value = _sessionState.value.copy(elapsedTimeSeconds = elapsed)
+            }
+        }
+
+        connectionJob = repositoryScope.launch {
+            try {
+                val outcome = wifiConnector.connectCandidateSync(
+                    ssid = ssid,
+                    password = candidate.credential,
+                    securityType = securityType,
+                    candidateIndex = 1,
+                    totalCandidates = 1,
+                    timeoutMs = timeoutMs
+                )
+
+                if (attemptId != currentAttemptId) {
+                    SafeWifiLogger.w("WiFiConnectionRepository", "Ignoring stale outcome for attempt $attemptId (current is $currentAttemptId)")
+                    return@launch
+                }
+
+                when (outcome) {
+                    is CandidateConnectionOutcome.Success -> {
+                        SafeWifiLogger.i(
+                            "WiFiConnectionRepository",
+                            "Candidate connection SUCCESS! IP=${outcome.ipAddress}, Gateway=${outcome.gateway}"
+                        )
+                        timerJob?.cancel()
+
+                        val successfulResult = SuccessfulConnectionResult(
+                            credential = candidate.credential,
+                            source = candidate.source,
+                            globalLineNumber = candidate.globalLineNumber,
+                            batchNumber = candidate.batchNumber,
+                            positionInBatch = candidate.positionInBatch,
+                            totalLines = candidate.totalLines,
+                            totalBatches = candidate.totalBatches,
+                            ssid = ssid,
+                            ipAddress = outcome.ipAddress,
+                            gateway = outcome.gateway
+                        )
+
+                        _successfulConnectionResult.value = successfulResult
+
+                        _sessionState.value = _sessionState.value.copy(
+                            status = ConnectionLifecycleStatus.SUCCESS,
+                            currentCandidateIndex = 1,
+                            currentCandidateMasked = masked,
+                            verifiedIpAddress = outcome.ipAddress,
+                            verifiedGateway = outcome.gateway,
+                            linkSpeedMbps = outcome.linkSpeedMbps,
+                            statusMessage = "Successfully connected & verified on $ssid!",
+                            confirmedPassword = candidate.credential,
+                            successfulResult = successfulResult,
+                            errorMessage = null
+                        )
+                    }
+
+                    is CandidateConnectionOutcome.Failed -> {
+                        SafeWifiLogger.w("WiFiConnectionRepository", "Candidate failed: ${outcome.reason}")
+                        timerJob?.cancel()
+                        wifiConnector.disconnectCurrent()
+                        _sessionState.value = _sessionState.value.copy(
+                            status = ConnectionLifecycleStatus.FAILED,
+                            statusMessage = "Connection failed: ${outcome.reason}",
+                            errorMessage = outcome.reason,
+                            canOpenSettings = outcome.canOpenSettings
+                        )
+                    }
+
+                    is CandidateConnectionOutcome.Cancelled -> {
+                        handleCancellation(ssid)
+                    }
+                }
+            } catch (c: CancellationException) {
+                handleCancellation(ssid)
+            } catch (e: Exception) {
+                SafeWifiLogger.e("WiFiConnectionRepository", "Unexpected candidate connection error", e)
+                timerJob?.cancel()
+                wifiConnector.disconnectCurrent()
+                _sessionState.value = _sessionState.value.copy(
+                    status = ConnectionLifecycleStatus.FAILED,
+                    statusMessage = "Connection error: ${e.localizedMessage ?: "Unknown error"}",
+                    errorMessage = e.localizedMessage ?: "Connection error",
+                    canOpenSettings = true
+                )
+            }
+        }
+    }
+
     /**
      * Connects to a network using a single credential.
      */
@@ -41,14 +183,14 @@ class WiFiConnectionRepository(
         ssid: String,
         password: String,
         securityType: WifiSecurityType,
-        timeoutMs: Long = 25_000L
+        timeoutMs: Long = 25_000L,
+        candidate: Candidate? = null
     ) {
-        connectWithCandidates(
-            ssid = ssid,
-            securityType = securityType,
-            candidatePasswords = listOf(password),
-            timeoutPerCandidateMs = timeoutMs
+        val cand = candidate ?: Candidate(
+            credential = password,
+            source = "Manually Entered"
         )
+        connectCandidate(ssid, cand, securityType, timeoutMs)
     }
 
     /**
@@ -85,13 +227,15 @@ class WiFiConnectionRepository(
         }
 
         // Cancel previous work cleanly
+        val attemptId = ++currentAttemptId
         cancelCurrentJobs(shouldSetCancelledState = false)
         wifiConnector.disconnectCurrent()
+        _successfulConnectionResult.value = null
 
         val startTime = System.currentTimeMillis()
         SafeWifiLogger.i(
             "WiFiConnectionRepository",
-            "Initiating connection state machine: SSID='$ssid', candidates=${candidates.size}"
+            "Initiating connection state machine [attempt #$attemptId]: SSID='$ssid', candidates=${candidates.size}"
         )
 
         _sessionState.value = WifiConnectionSessionState(
@@ -145,6 +289,11 @@ class WiFiConnectionRepository(
                         timeoutMs = timeoutPerCandidateMs
                     )
 
+                    if (attemptId != currentAttemptId) {
+                        SafeWifiLogger.w("WiFiConnectionRepository", "Ignoring stale candidate outcome for attempt $attemptId (current is $currentAttemptId)")
+                        return@launch
+                    }
+
                     when (outcome) {
                         is CandidateConnectionOutcome.Success -> {
                             SafeWifiLogger.i(
@@ -152,6 +301,16 @@ class WiFiConnectionRepository(
                                 "Candidate [$candidateIndex/${candidates.size}] -> SUCCESS! IP=${outcome.ipAddress}, Gateway=${outcome.gateway}"
                             )
                             timerJob?.cancel()
+
+                            val successfulResult = SuccessfulConnectionResult(
+                                credential = candidate.rawPassword,
+                                source = candidate.source,
+                                ssid = ssid,
+                                ipAddress = outcome.ipAddress,
+                                gateway = outcome.gateway
+                            )
+                            _successfulConnectionResult.value = successfulResult
+
                             _sessionState.value = _sessionState.value.copy(
                                 status = ConnectionLifecycleStatus.SUCCESS,
                                 currentCandidateIndex = candidateIndex,
@@ -161,6 +320,7 @@ class WiFiConnectionRepository(
                                 linkSpeedMbps = outcome.linkSpeedMbps,
                                 statusMessage = "Successfully connected & verified on $ssid!",
                                 confirmedPassword = candidate.rawPassword,
+                                successfulResult = successfulResult,
                                 errorMessage = null
                             )
                             return@launch
@@ -233,6 +393,7 @@ class WiFiConnectionRepository(
      * User-requested cancellation of ongoing connection or candidate testing.
      */
     fun cancel() {
+        currentAttemptId++
         val currentSsid = _sessionState.value.targetSsid
         cancelCurrentJobs(shouldSetCancelledState = true)
         handleCancellation(currentSsid)
@@ -242,9 +403,11 @@ class WiFiConnectionRepository(
      * Resets the repository back to IDLE state.
      */
     fun reset() {
+        currentAttemptId++
         cancelCurrentJobs(shouldSetCancelledState = false)
         wifiConnector.resetState()
         _sessionState.value = WifiConnectionSessionState()
+        _successfulConnectionResult.value = null
         SafeWifiLogger.d("WiFiConnectionRepository", "Reset state machine to IDLE")
     }
 

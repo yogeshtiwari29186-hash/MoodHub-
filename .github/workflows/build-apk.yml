@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - main
+      - master
+    tags:
+      - 'v*'
   workflow_dispatch:
 
 permissions:
@@ -44,10 +47,23 @@ jobs:
         with:
           gradle-version: '9.3.1'
 
-      - name: Create temporary debug keystore
+      - name: Prepare environment configuration
+        run: |
+          if [ ! -f ".env" ] && [ -f ".env.example" ]; then
+            echo "Copying .env.example to .env..."
+            cp .env.example .env
+          elif [ ! -f ".env" ]; then
+            echo "Creating empty .env file..."
+            touch .env
+          fi
+
+      - name: Create or restore debug keystore
         run: |
           if [ -f "./debug.keystore" ]; then
             echo "./debug.keystore already exists. Skipping generation."
+          elif [ -f "./debug.keystore.base64" ]; then
+            echo "Restoring ./debug.keystore from debug.keystore.base64..."
+            base64 -d ./debug.keystore.base64 > ./debug.keystore
           else
             echo "Generating temporary debug keystore..."
             keytool -genkeypair -v \
@@ -64,7 +80,7 @@ jobs:
             echo "Error: ./debug.keystore could not be found or created."
             exit 1
           fi
-          echo "Temporary debug keystore verified."
+          echo "Debug keystore verified."
 
       - name: Build debug APK
         run: gradle :app:assembleDebug --stacktrace --no-daemon
@@ -139,8 +155,13 @@ jobs:
             *) echo "Error: Asset file is not an .apk file ($ASSET_PATH). Aborting release publication."; exit 1 ;;
           esac
 
-          RELEASE_TAG="debug-apk-build-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}"
-          RELEASE_TITLE="Debug APK Build #${GITHUB_RUN_NUMBER}"
+          if [ -n "$GITHUB_REF_NAME" ] && [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            RELEASE_TAG="$GITHUB_REF_NAME"
+            RELEASE_TITLE="Release $GITHUB_REF_NAME"
+          else
+            RELEASE_TAG="debug-apk-build-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}"
+            RELEASE_TITLE="Debug APK Build #${GITHUB_RUN_NUMBER}"
+          fi
 
           NOTES_CONTENT=$(cat <<EOF
           ### Automated Debug APK Build
@@ -152,17 +173,23 @@ jobs:
           - **Source Commit:** ${GITHUB_SHA}
           - **Artifact Name:** \`${ASSET_FILENAME}\`
 
-          > **Note:** This APK is intended for testing and verification only. It is not a Google Play Store production release and is signed with a temporary debug keystore.
+          > **Note:** This APK is intended for testing and verification only. It is signed with the debug keystore.
           EOF
           )
 
-          gh release create "$RELEASE_TAG" "$ASSET_PATH" \
-            --target "$GITHUB_SHA" \
-            --title "$RELEASE_TITLE" \
-            --notes "$NOTES_CONTENT" \
-            --latest
+          if gh release view "$RELEASE_TAG" &>/dev/null; then
+            echo "Release $RELEASE_TAG already exists. Uploading asset..."
+            gh release upload "$RELEASE_TAG" "$ASSET_PATH" --clobber
+          else
+            echo "Creating release $RELEASE_TAG..."
+            gh release create "$RELEASE_TAG" "$ASSET_PATH" \
+              --target "$GITHUB_SHA" \
+              --title "$RELEASE_TITLE" \
+              --notes "$NOTES_CONTENT" \
+              --latest
+          fi
 
-          echo "Release successfully created with tag: $RELEASE_TAG"
+          echo "Release successfully processed with tag: $RELEASE_TAG"
           echo "release_tag=${RELEASE_TAG}" >> "$GITHUB_OUTPUT"
 
       - name: Report APK download result
@@ -172,7 +199,11 @@ jobs:
         run: |
           RELEASE_OUTCOME="${{ steps.publish_release.outcome }}"
           ASSET_FILENAME="${{ steps.prepare_asset.outputs.asset_filename }}"
-          RELEASE_TAG="debug-apk-build-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}"
+          if [ -n "$GITHUB_REF_NAME" ] && [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            RELEASE_TAG="$GITHUB_REF_NAME"
+          else
+            RELEASE_TAG="debug-apk-build-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}"
+          fi
 
           echo "### Build and Release Summary" >> "$GITHUB_STEP_SUMMARY"
           echo "- **APK Build:** Succeeded" >> "$GITHUB_STEP_SUMMARY"
@@ -190,7 +221,6 @@ jobs:
             fi
 
             echo "Release Tag: $RELEASE_TAG"
-            echo "Release Title: Debug APK Build #${GITHUB_RUN_NUMBER}"
             echo "Release URL: $RELEASE_URL"
             echo "Asset Filename: $ASSET_FILENAME"
 

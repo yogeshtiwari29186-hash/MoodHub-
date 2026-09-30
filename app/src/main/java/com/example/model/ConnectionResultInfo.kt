@@ -3,6 +3,10 @@ package com.example.model
 import com.example.util.SafeWifiLogger
 import java.text.NumberFormat
 
+const val SOURCE_IMPORTED_TXT = "Imported TXT"
+const val SOURCE_IMPORTED_TXT_KEY = "IMPORTED_TXT"
+const val SOURCE_MANUAL = "Manually Entered"
+
 /**
  * Immutable representation of a candidate selected for a Wi-Fi connection attempt.
  * Bundles the credential with its origin metadata (file line number, batch, position).
@@ -49,8 +53,11 @@ data class SuccessfulConnectionResult(
     val lineNumber: Long? get() = globalLineNumber
     val passwordNumber: Long? get() = globalLineNumber
 
+    val displaySource: String
+        get() = if (source.equals("IMPORTED_TXT", ignoreCase = true)) "Imported TXT" else source
+
     val isImported: Boolean
-        get() = source != "Manually Entered" && globalLineNumber != null
+        get() = source != "Manually Entered" && (globalLineNumber != null || source.contains("Import", ignoreCase = true))
 
     constructor(
         ssid: String,
@@ -95,6 +102,16 @@ data class SuccessfulConnectionResult(
             "${formatNumber(line)} / ${formatNumber(total)}"
         } else {
             formatNumber(line)
+        }
+    }
+
+    fun rawLine(): String? {
+        val line = globalLineNumber ?: return null
+        val total = totalLines
+        return if (total != null && total > 0) {
+            "$line / $total"
+        } else {
+            line.toString()
         }
     }
 
