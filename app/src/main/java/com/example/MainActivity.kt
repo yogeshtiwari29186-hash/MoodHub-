@@ -432,15 +432,8 @@ fun WifiManagerAppRoot(viewModel: WifiViewModel) {
 
             // Connection Modal Dialog
             selectedNetwork?.let { network ->
-                var matchedPassword by remember { mutableStateOf<String?>(null) }
-
-                LaunchedEffect(network.ssid) {
-                    matchedPassword = viewModel.findPasswordForSsid(network.ssid)
-                }
-
                 ConnectModal(
                     network = network,
-                    matchedPassword = matchedPassword,
                     importedEntries = importedEntries,
                     connectionState = connectionState,
                     batchState = batchUiState,
@@ -449,9 +442,6 @@ fun WifiManagerAppRoot(viewModel: WifiViewModel) {
                     onImportFileClick = { openDocumentPicker() },
                     onEditImportedEntry = { id, ssid, pass -> viewModel.updateImportedEntry(id, ssid, pass) },
                     onDeleteImportedEntry = { id -> viewModel.deleteImportedEntry(id) },
-                    onConnect = { ssid, password, securityType, saveToVault ->
-                        viewModel.connectToNetwork(ssid, password, securityType, saveToVault)
-                    },
                     onConnectCandidate = { ssid, candidate, securityType, saveToVault ->
                         viewModel.connectCandidate(ssid, candidate, securityType, saveToVault)
                     },

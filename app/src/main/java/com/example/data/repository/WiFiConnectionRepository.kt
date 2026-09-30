@@ -218,7 +218,7 @@ class WiFiConnectionRepository(
             val list = candidatePasswords
                 .map { it.trim() }
                 .filter { it.isNotEmpty() }
-                .map { ConnectionCandidate(rawPassword = it, source = "List") }
+                .map { ConnectionCandidate(rawPassword = it, source = "Imported TXT") }
             if (list.isEmpty()) {
                 listOf(ConnectionCandidate(rawPassword = "", source = "Empty"))
             } else {
@@ -305,6 +305,8 @@ class WiFiConnectionRepository(
                             val successfulResult = SuccessfulConnectionResult(
                                 credential = candidate.rawPassword,
                                 source = candidate.source,
+                                globalLineNumber = candidateIndex.toLong(),
+                                totalLines = candidates.size.toLong(),
                                 ssid = ssid,
                                 ipAddress = outcome.ipAddress,
                                 gateway = outcome.gateway

@@ -15,10 +15,8 @@ class SuccessfulConnectionResultTest {
 
     @Test
     fun testSuccessfulCredentialDisplayBugFix() {
-        // Bug reproduction scenario:
-        // manualPassword in TextField = "123456"
-        // successful candidate from imported txt = "Aarti7756" at line 4
         val manualPassword = "123456"
+        val defaultPassword = "DefaultRouterPassword"
         val successfulCandidate = "Aarti7756"
 
         val candidate = Candidate(
@@ -40,19 +38,59 @@ class SuccessfulConnectionResultTest {
             positionInBatch = candidate.positionInBatch,
             totalLines = candidate.totalLines,
             totalBatches = candidate.totalBatches,
-            ssid = "AartiRouter",
-            ipAddress = "192.168.1.100",
+            ssid = "MyWiFi",
+            ipAddress = "192.168.1.10",
             gateway = "192.168.1.1"
         )
 
-        // After success: result.credential == "Aarti7756"
+        // After success: result.credential == "Aarti7756", never manual or default passwords
         assertEquals("Aarti7756", result.credential)
         assertNotEquals(manualPassword, result.credential)
+        assertNotEquals(defaultPassword, result.credential)
+        assertEquals("MyWiFi", result.ssid)
+        assertEquals("192.168.1.10", result.ipAddress)
         assertEquals("Imported TXT", result.displaySource)
         assertEquals("4 / 2,000", result.formatLine())
         assertEquals("4 / 2000", result.rawLine())
         assertEquals("1 / 4", result.formatBatch())
         assertEquals("4 / 500", result.formatPositionInBatch())
+    }
+
+    @Test
+    fun testSuccessfulCandidateSetsResultCredentialRegardlessOfPreviousOrDefaultState() {
+        val previousState = "OldPassword999"
+        val defaultState = "AdminDefault123"
+        val candidateCredential = "Aarti7756"
+
+        val candidate = Candidate(
+            credential = candidateCredential,
+            source = "Imported TXT",
+            globalLineNumber = 4L,
+            batchNumber = 1L,
+            positionInBatch = 4,
+            totalLines = 2000L,
+            totalBatches = 4L
+        )
+
+        val result = SuccessfulConnectionResult(
+            credential = candidate.credential,
+            source = candidate.source,
+            globalLineNumber = candidate.globalLineNumber,
+            batchNumber = candidate.batchNumber,
+            positionInBatch = candidate.positionInBatch,
+            totalLines = candidate.totalLines,
+            totalBatches = candidate.totalBatches,
+            ssid = "MyWiFi",
+            ipAddress = "192.168.1.10",
+            gateway = "192.168.1.1"
+        )
+
+        assertEquals("Aarti7756", result.credential)
+        assertNotEquals(previousState, result.credential)
+        assertNotEquals(defaultState, result.credential)
+        assertEquals("MyWiFi", result.ssid)
+        assertEquals("192.168.1.10", result.ipAddress)
+        assertEquals("Imported TXT", result.displaySource)
     }
 
     @Test
@@ -106,32 +144,6 @@ class SuccessfulConnectionResultTest {
         assertEquals("511 / 10,000,000", result.formatLine())
         assertEquals("2 / 20,000", result.formatBatch())
         assertEquals("11 / 500", result.formatPositionInBatch())
-    }
-
-    @Test
-    fun testManuallyEnteredCredentialDoesNotInventLineNumber() {
-        val manualResult = ConnectionResultInfo(
-            ssid = "sai raj",
-            password = "MyCustomPassword99!",
-            source = "Manually Entered",
-            passwordNumber = null,
-            lineNumber = null,
-            totalLines = null,
-            batchNumber = null,
-            totalBatches = null,
-            positionInBatch = null,
-            ipAddress = "192.168.1.5",
-            status = "Connected"
-        )
-
-        assertFalse(manualResult.isImported)
-        assertEquals("Manually Entered", manualResult.source)
-        assertNull(manualResult.formatPasswordNumber())
-        assertNull(manualResult.formatLine())
-        assertNull(manualResult.formatBatch())
-        assertNull(manualResult.formatPositionInBatch())
-        assertEquals("192.168.1.5", manualResult.ipAddress)
-        assertEquals("Connected", manualResult.status)
     }
 
     @Test
