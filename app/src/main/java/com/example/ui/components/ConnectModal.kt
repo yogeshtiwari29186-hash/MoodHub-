@@ -48,7 +48,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
@@ -74,7 +73,6 @@ import com.example.model.ImportedEntry
 import com.example.model.PasswordBatchUiState
 import com.example.model.SuccessfulConnectionResult
 import com.example.model.WifiNetwork
-import com.example.model.WifiSecurityType
 import com.example.ui.theme.SignalGreen
 import com.example.wifi.WifiConnectionState
 import java.text.NumberFormat
@@ -97,8 +95,6 @@ fun ConnectModal(
     onOpenSettings: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
-    matchedPassword: String? = null,
-    onConnect: ((ssid: String, password: String, securityType: WifiSecurityType, saveToVault: Boolean) -> Unit)? = null,
     batchState: PasswordBatchUiState? = null,
     currentWifiInfo: CurrentWifiInfo? = null,
     successfulConnectionResult: SuccessfulConnectionResult? = null,
@@ -130,24 +126,9 @@ fun ConnectModal(
         } ?: emptyList()
     }
 
-    // Freeze the successful result object when received so it cannot be mutated or overwritten
-    var frozenSuccessfulResult by remember { mutableStateOf<SuccessfulConnectionResult?>(null) }
-
-    LaunchedEffect(successfulConnectionResult) {
-        if (successfulConnectionResult != null) {
-            frozenSuccessfulResult = successfulConnectionResult
-        }
-    }
-
-    LaunchedEffect(connectionState) {
-        val stateResult = (connectionState as? WifiConnectionState.Connected)?.result
-        if (stateResult != null && frozenSuccessfulResult == null) {
-            frozenSuccessfulResult = stateResult
-        }
-    }
-
-    // The result card renders ONLY from immutable SuccessfulConnectionResult
-    val activeSuccessfulResult = frozenSuccessfulResult ?: successfulConnectionResult ?: (connectionState as? WifiConnectionState.Connected)?.result
+    // The result card is rendered exclusively from the repository/ViewModel StateFlow.
+    // No connection-state password or local mutable result state can overwrite it.
+    val activeSuccessfulResult = successfulConnectionResult
 
     Dialog(
         onDismissRequest = {
@@ -405,11 +386,12 @@ fun ConnectModal(
                                 Button(
                                     onClick = {
                                         val cand = Candidate(credential = "", source = "Open Network")
-                                        if (onConnectCandidate != null) {
-                                            onConnectCandidate(network.ssid, cand, network.securityType, false)
-                                        } else {
-                                            onConnect?.invoke(network.ssid, "", network.securityType, false)
-                                        }
+                                        onConnectCandidate(
+                                            network.ssid,
+                                            cand,
+                                            network.securityType,
+                                            false
+                                        )
                                     },
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -583,11 +565,12 @@ fun ConnectModal(
 
                                                 Button(
                                                     onClick = {
-                                                        if (onConnectCandidate != null) {
-                                                            onConnectCandidate(network.ssid, candidate, network.securityType, saveToVault)
-                                                        } else {
-                                                            onConnect?.invoke(network.ssid, candidate.credential, network.securityType, saveToVault)
-                                                        }
+                                                        onConnectCandidate(
+                                                            network.ssid,
+                                                            candidate,
+                                                            network.securityType,
+                                                            saveToVault
+                                                        )
                                                     },
                                                     shape = RoundedCornerShape(8.dp),
                                                     contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 6.dp),
