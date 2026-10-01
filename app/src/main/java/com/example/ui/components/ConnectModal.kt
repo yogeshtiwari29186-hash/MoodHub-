@@ -387,7 +387,7 @@ fun ConnectModal(
                                 Button(
                                     onClick = {
                                         val cand = Candidate(credential = "", source = "Open Network")
-                                        onConnectCandidate(
+                                        onConnectCandidate?.invoke(
                                             network.ssid,
                                             cand,
                                             network.securityType,
@@ -566,7 +566,7 @@ fun ConnectModal(
 
                                                 Button(
                                                     onClick = {
-                                                        onConnectCandidate(
+                                                        onConnectCandidate?.invoke(
                                                             network.ssid,
                                                             candidate,
                                                             network.securityType,
