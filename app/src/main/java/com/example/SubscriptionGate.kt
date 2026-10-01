@@ -1,22 +1,21 @@
 package com.example
 
 import android.app.Activity
+import android.util.Log
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import com.google.android.gms.ads.AdRequest
 import com.google.android.gms.ads.AdError
+import com.google.android.gms.ads.AdRequest
+import com.google.android.gms.ads.FullScreenContentCallback
 import com.google.android.gms.ads.LoadAdError
 import com.google.android.gms.ads.interstitial.InterstitialAd
 import com.google.android.gms.ads.interstitial.InterstitialAdLoadCallback
-import com.google.android.gms.ads.FullScreenContentCallback
 
-// Existing AdMob interstitial unit.
-// The other supplied units are Rewarded / Rewarded Interstitial and are not
-// interchangeable with InterstitialAd.
-private const val AD_INTERSTITIAL = "ca-app-pub-1835719222780575/4072312143"
+private const val TAG = "AdMobInterstitial"
+private const val AD_INTERSTITIAL = "ca-app-pub-1835719222780575/9783628813"
 
 @Composable
 fun SubscriptionGate(
@@ -26,12 +25,10 @@ fun SubscriptionGate(
     val activity = context as? Activity
 
     var interstitialAd by remember { mutableStateOf<InterstitialAd?>(null) }
-    var showAfterLoad by remember { mutableStateOf(false) }
 
-    fun loadInterstitial(showWhenLoaded: Boolean = false) {
-        if (activity == null) return
+    fun loadInterstitial() {
+        if (activity == null || interstitialAd != null) return
 
-        showAfterLoad = showWhenLoaded
         InterstitialAd.load(
             activity,
             AD_INTERSTITIAL,
@@ -39,28 +36,12 @@ fun SubscriptionGate(
             object : InterstitialAdLoadCallback() {
                 override fun onAdLoaded(ad: InterstitialAd) {
                     interstitialAd = ad
-
-                    if (showAfterLoad) {
-                        showAfterLoad = false
-                        ad.fullScreenContentCallback = object : FullScreenContentCallback() {
-                            override fun onAdDismissedFullScreenContent() {
-                                interstitialAd = null
-                                loadInterstitial(false)
-                            }
-
-                            override fun onAdFailedToShowFullScreenContent(adError: AdError) {
-                                interstitialAd = null
-                                loadInterstitial(false)
-                            }
-                        }
-                        interstitialAd = null
-                        ad.show(activity)
-                    }
+                    Log.d(TAG, "Interstitial loaded")
                 }
 
                 override fun onAdFailedToLoad(error: LoadAdError) {
                     interstitialAd = null
-                    showAfterLoad = false
+                    Log.e(TAG, "Interstitial failed: code=" + error.code + ", message=" + error.message)
                 }
             }
         )
@@ -71,30 +52,34 @@ fun SubscriptionGate(
 
         val ad = interstitialAd
         if (ad == null) {
-            loadInterstitial(false)
+            loadInterstitial()
             return
         }
 
         interstitialAd = null
         ad.fullScreenContentCallback = object : FullScreenContentCallback() {
+            override fun onAdShowedFullScreenContent() {
+                Log.d(TAG, "Interstitial shown")
+            }
+
             override fun onAdDismissedFullScreenContent() {
-                loadInterstitial(false)
+                Log.d(TAG, "Interstitial dismissed")
+                loadInterstitial()
             }
 
             override fun onAdFailedToShowFullScreenContent(adError: AdError) {
-                loadInterstitial(false)
+                Log.e(TAG, "Interstitial failed to show: " + adError.message)
+                loadInterstitial()
             }
         }
         ad.show(activity)
     }
 
-    // Load immediately and show the interstitial as soon as it is available.
     LaunchedEffect(Unit) {
-        loadInterstitial(showWhenLoaded = true)
+        loadInterstitial()
     }
 
     Box(Modifier.fillMaxSize()) {
-        // Subscription/Firebase gating is removed; ads only.
         content(
             true,
             true,
