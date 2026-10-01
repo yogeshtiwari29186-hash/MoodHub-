@@ -1,5 +1,6 @@
 package com.example
 
+import android.app.Activity
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.layout.*
@@ -15,6 +16,9 @@ import kotlinx.coroutines.delay
 import com.google.android.gms.ads.AdRequest
 import com.google.android.gms.ads.AdSize
 import com.google.android.gms.ads.AdView
+import com.google.android.gms.ads.LoadAdError
+import com.google.android.gms.ads.interstitial.InterstitialAd
+import com.google.android.gms.ads.interstitial.InterstitialAdLoadCallback
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
@@ -24,6 +28,7 @@ private const val OWNER_EMAIL = "yogeshtiwari0620@gmail.com"
 private const val OWNER_PHONE = "9699276869"
 private const val PLAN_DAYS = 60
 private const val TRIAL_DAYS = 30
+private const val INTERSTITIAL_AD_UNIT_ID = "ca-app-pub-1835719222780575/4072312143"
 
 data class AccessState(
     val loading: Boolean = true,
@@ -40,9 +45,36 @@ data class AccessState(
 }
 
 @Composable
-fun SubscriptionGate(content: @Composable (Boolean, Boolean) -> Unit) {
+fun SubscriptionGate(content: @Composable (Boolean, Boolean, () -> Unit) -> Unit) {
     val auth = remember { FirebaseAuth.getInstance() }
     val db = remember { FirebaseFirestore.getInstance() }
+    val context = LocalContext.current
+    val activity = context as? Activity
+    var interstitialAd by remember { mutableStateOf<InterstitialAd?>(null) }
+
+    fun loadInterstitial() {
+        if (activity == null) return
+        InterstitialAd.load(activity, INTERSTITIAL_AD_UNIT_ID, AdRequest.Builder().build(),
+            object : InterstitialAdLoadCallback() {
+                override fun onAdLoaded(ad: InterstitialAd) { interstitialAd = ad }
+                override fun onAdFailedToLoad(error: LoadAdError) { interstitialAd = null }
+            })
+    }
+
+    fun showInterstitialIfAllowed() {
+        if (!state.showAds || activity == null) return
+        val ad = interstitialAd
+        if (ad != null) {
+            interstitialAd = null
+            ad.fullScreenContentCallback = object : com.google.android.gms.ads.FullScreenContentCallback() {
+                override fun onAdDismissedFullScreenContent() { loadInterstitial() }
+                override fun onAdFailedToShowFullScreenContent(adError: com.google.android.gms.ads.AdError) { loadInterstitial() }
+            }
+            ad.show(activity)
+        } else {
+            loadInterstitial()
+        }
+    }
     var state by remember { mutableStateOf(AccessState()) }
     var refresh by remember { mutableIntStateOf(0) }
 
@@ -69,6 +101,15 @@ fun SubscriptionGate(content: @Composable (Boolean, Boolean) -> Unit) {
     }
 
     LaunchedEffect(refresh, auth.currentUser?.uid) { load() }
+    LaunchedEffect(state.showAds, state.signedIn, state.owner) {
+        if (state.signedIn && !state.owner) loadInterstitial()
+    }
+    LaunchedEffect(state.status, state.showAds) {
+        if (state.signedIn && state.showAds && state.status != "pending" && state.status != "rejected") {
+            delay(1200)
+            showInterstitialIfAllowed()
+        }
+    }
     LaunchedEffect(state.status, state.expiryMillis) {
         if ((state.status == "trial" || state.status == "active") && state.expiryMillis > 0) {
             while (System.currentTimeMillis() < state.expiryMillis) delay(30_000)
@@ -84,7 +125,7 @@ fun SubscriptionGate(content: @Composable (Boolean, Boolean) -> Unit) {
         OwnerPanel { auth.signOut(); refresh++ }
     } else {
         Box(Modifier.fillMaxSize()) {
-            content(state.canStartTest, state.showAds)
+            content(state.canStartTest, state.showAds, ::showInterstitialIfAllowed)
             if (state.showAds) BannerAd(Modifier.align(Alignment.BottomCenter))
             if (!state.canStartTest) SubscriptionNotice { refresh++ }
         }
@@ -146,7 +187,7 @@ private fun SubscriptionNotice(onRefresh: () -> Unit) {
     Card(Modifier.fillMaxWidth().padding(12.dp)) {
         Column(Modifier.padding(14.dp)) {
             Text("Subscription required", style = MaterialTheme.typography.titleMedium)
-            Text(when (state.status) { "pending" -> "Approval pending • ₹30 / 2 months"; "rejected" -> "Request rejected • ₹30 / 2 months"; "expired" -> "Subscription expired • ₹30 / 2 months"; else -> "₹30 / 2 months" })
+            Text("₹30 / 2 months")
             Text("Owner: $OWNER_PHONE")
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
