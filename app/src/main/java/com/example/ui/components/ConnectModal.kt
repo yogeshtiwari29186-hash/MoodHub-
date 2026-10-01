@@ -698,11 +698,7 @@ fun ConnectModal(
 
                                                 Button(
                                                     onClick = {
-                                                        if (onConnectCandidate != null) {
-                                                            onConnectCandidate(network.ssid, candidate, network.securityType, saveToVault)
-                                                        } else {
-                                                            onConnect?.invoke(network.ssid, candidate.credential, network.securityType, saveToVault)
-                                                        }
+                                                        onConnectCandidate?.invoke(network.ssid, candidate, network.securityType, saveToVault)
                                                     },
                                                     shape = RoundedCornerShape(8.dp),
                                                     contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 6.dp),
