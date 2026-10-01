@@ -82,9 +82,6 @@ class MainActivity : ComponentActivity() {
                 WifiManagerAppRoot(viewModel = viewModel)
             }
 
-            LaunchedEffect(Unit) {
-                AdsManager.showAppOpenAd(this@MainActivity)
-            }
         }
     }
 }
@@ -476,14 +473,7 @@ fun WifiManagerAppRoot(viewModel: WifiViewModel) {
                     candidatePasswords = importedEntries.map { it.password },
                     testState = routerTestState,
                     onStartTest = { ssid, secType, candidates ->
-                        val activity = context as? MainActivity
-                        if (activity != null) {
-                            AdsManager.showStartTestAd(activity) {
-                                viewModel.startAuthorizedRouterTest(ssid, secType, candidates)
-                            }
-                        } else {
-                            viewModel.startAuthorizedRouterTest(ssid, secType, candidates)
-                        }
+                        viewModel.startAuthorizedRouterTest(ssid, secType, candidates)
                     },
                     onStopTest = { viewModel.stopAuthorizedRouterTest() },
                     onUseConfirmedPassword = { confirmedSsid, confirmedPass ->
