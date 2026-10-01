@@ -81,8 +81,8 @@ class MainActivity : ComponentActivity() {
             val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
 
             WifiManagerTheme(themePreference = themeMode) {
-                SubscriptionGate { canStartTest, _, showInterstitialAd ->
-                    WifiManagerAppRoot(viewModel = viewModel, canStartTest = canStartTest, showInterstitialAd = showInterstitialAd)
+                SubscriptionGate { canStartTest, _, showNavigationAd, showStartTestAd ->
+                    WifiManagerAppRoot(viewModel = viewModel, canStartTest = canStartTest, showInterstitialAd = showNavigationAd, showStartTestAd = showStartTestAd)
                 }
             }
 
@@ -92,7 +92,7 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun WifiManagerAppRoot(viewModel: WifiViewModel, canStartTest: Boolean, showInterstitialAd: () -> Unit) {
+fun WifiManagerAppRoot(viewModel: WifiViewModel, canStartTest: Boolean, showInterstitialAd: () -> Unit, showStartTestAd: () -> Unit) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -353,7 +353,7 @@ fun WifiManagerAppRoot(viewModel: WifiViewModel, canStartTest: Boolean, showInte
                     onImportFileClick = { openDocumentPicker() },
                     onStartTestClick = {
                         if (!canStartTest) {
-                            coroutineScope.launch { snackbarHostState.showSnackbar("Subscription approval required") }
+                            coroutineScope.launch { snackbarHostState.showSnackbar("Start Test unavailable") }
                         } else {
                         routerTestTargetSsid = currentInfo.ssid.ifBlank { networks.firstOrNull()?.ssid ?: "" }
                         showRouterTestModal = true
@@ -474,6 +474,7 @@ fun WifiManagerAppRoot(viewModel: WifiViewModel, canStartTest: Boolean, showInte
                             coroutineScope.launch { snackbarHostState.showSnackbar("Subscription approval required") }
                         } else {
                             routerTestTargetSsid = network.ssid
+                            showStartTestAd()
                             showRouterTestModal = true
                         }
                     },
