@@ -55,10 +55,15 @@ fun SubscriptionGate(content: @Composable (Boolean, Boolean) -> Unit) {
         }
         db.collection("subscriptions").document(user.uid).get()
             .addOnSuccessListener { d ->
-                val status = d.getString("status") ?: "pending"
-                val expiry = d.getTimestamp("expiryAt")?.toDate()?.time ?: 0L
-                val effective = if ((status == "trial" || status == "active") && expiry <= System.currentTimeMillis()) "expired" else status
-                state = AccessState(false, true, false, effective, expiry)
+                if (!d.exists()) {
+                    db.collection("subscriptions").document(user.uid).set(mapOf("uid" to user.uid, "email" to (user.email ?: ""), "status" to "pending", "createdAt" to java.util.Date()))
+                        .addOnCompleteListener { state = AccessState(false, true, false, "pending") }
+                } else {
+                    val status = d.getString("status") ?: "pending"
+                    val expiry = d.getTimestamp("expiryAt")?.toDate()?.time ?: 0L
+                    val effective = if ((status == "trial" || status == "active") && expiry <= System.currentTimeMillis()) "expired" else status
+                    state = AccessState(false, true, false, effective, expiry)
+                }
             }
             .addOnFailureListener { state = AccessState(false, true, false, "error", 0L, it.message ?: "Firebase error") }
     }
