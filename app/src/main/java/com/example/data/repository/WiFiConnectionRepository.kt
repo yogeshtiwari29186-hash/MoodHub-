@@ -62,13 +62,14 @@ class WiFiConnectionRepository(
         }
 
         if (securityType != WifiSecurityType.OPEN &&
-            !candidate.source.equals("Imported TXT", ignoreCase = true)
+            !candidate.source.equals("Imported TXT", ignoreCase = true) &&
+            !candidate.source.equals("Manually Entered", ignoreCase = true)
         ) {
             _sessionState.value = WifiConnectionSessionState(
                 status = ConnectionLifecycleStatus.FAILED,
                 targetSsid = ssid,
                 securityType = securityType,
-                errorMessage = "Secured connections require credentials imported from TXT/CSV."
+                errorMessage = "Secured connections require an authorized credential."
             )
             return
         }
