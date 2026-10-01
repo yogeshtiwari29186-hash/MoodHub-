@@ -1,6 +1,7 @@
 package com.example
 
 import android.app.Application
+import com.google.android.gms.ads.MobileAds
 import com.example.data.local.AppDatabase
 import com.example.data.preference.UserPreferencesRepository
 import com.example.data.repository.CredentialRepository
@@ -42,6 +43,7 @@ class WifiManagerApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        MobileAds.initialize(this)
         instance = this
         database = AppDatabase.getInstance(this)
         credentialRepository = CredentialRepository(database.credentialDao())
