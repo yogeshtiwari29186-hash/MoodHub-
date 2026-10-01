@@ -81,8 +81,8 @@ class MainActivity : ComponentActivity() {
             val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
 
             WifiManagerTheme(themePreference = themeMode) {
-                SubscriptionGate { canStartTest, _ ->
-                    WifiManagerAppRoot(viewModel = viewModel, canStartTest = canStartTest)
+                SubscriptionGate { canStartTest, _, showInterstitialAd ->
+                    WifiManagerAppRoot(viewModel = viewModel, canStartTest = canStartTest, showInterstitialAd = showInterstitialAd)
                 }
             }
 
@@ -92,12 +92,17 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun WifiManagerAppRoot(viewModel: WifiViewModel, canStartTest: Boolean) {
+fun WifiManagerAppRoot(viewModel: WifiViewModel, canStartTest: Boolean, showInterstitialAd: () -> Unit) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
 
     var selectedTab by remember { mutableIntStateOf(0) }
+    var firstTabSelection by remember { mutableStateOf(true) }
+
+    LaunchedEffect(selectedTab) {
+        if (firstTabSelection) firstTabSelection = false else showInterstitialAd()
+    }
 
     // State collections
     val networks by viewModel.networks.collectAsStateWithLifecycle()
