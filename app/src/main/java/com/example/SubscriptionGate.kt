@@ -153,6 +153,7 @@ private fun SubscriptionNotice(onRefresh: () -> Unit) {
                     val u = FirebaseAuth.getInstance().currentUser ?: return@OutlinedButton
                     FirebaseFirestore.getInstance().collection("paymentRequests").document(u.uid)
                         .set(mapOf("uid" to u.uid, "email" to (u.email ?: ""), "status" to "pending", "requestedAt" to java.util.Date()), SetOptions.merge())
+                        .continueWithTask { FirebaseFirestore.getInstance().collection("subscriptions").document(u.uid).set(mapOf("status" to "pending"), SetOptions.merge()) }
                         .addOnCompleteListener { onRefresh() }
                 }) { Text("Request Approval") }
             }
