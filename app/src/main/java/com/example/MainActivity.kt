@@ -81,6 +81,10 @@ class MainActivity : ComponentActivity() {
             WifiManagerTheme(themePreference = themeMode) {
                 WifiManagerAppRoot(viewModel = viewModel)
             }
+
+            LaunchedEffect(Unit) {
+                AdsManager.showAppOpenAd(this@MainActivity)
+            }
         }
     }
 }
