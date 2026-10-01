@@ -248,13 +248,7 @@ fun WifiManagerAppRoot(viewModel: WifiViewModel) {
             )
         },
         bottomBar = {
-            Column(
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                AdsManager.BannerAd(
-                    modifier = Modifier.fillMaxWidth()
-                )
-                NavigationBar(
+            NavigationBar(
                     modifier = Modifier
                         .fillMaxWidth()
                         .windowInsetsPadding(WindowInsets.navigationBars)
@@ -326,7 +320,6 @@ fun WifiManagerAppRoot(viewModel: WifiViewModel) {
                     label = { Text("Settings") },
                     modifier = Modifier.testTag("nav_tab_settings")
                 )
-                }
             }
         }
     ) { innerPadding ->
@@ -485,7 +478,7 @@ fun WifiManagerAppRoot(viewModel: WifiViewModel) {
                     onStartTest = { ssid, secType, candidates ->
                         val activity = context as? MainActivity
                         if (activity != null) {
-                            AdsManager.showTwoStartTestAds(activity) {
+                            AdsManager.showStartTestAd(activity) {
                                 viewModel.startAuthorizedRouterTest(ssid, secType, candidates)
                             }
                         } else {
