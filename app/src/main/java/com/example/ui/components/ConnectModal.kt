@@ -95,6 +95,7 @@ fun ConnectModal(
     onOpenRouterTest: () -> Unit,
     onOpenSettings: () -> Unit,
     onDismiss: () -> Unit,
+    onConnectManual: ((ssid: String, password: String, securityType: WifiSecurityType, saveToVault: Boolean) -> Unit)? = null,
     modifier: Modifier = Modifier,
     batchState: PasswordBatchUiState? = null,
     currentWifiInfo: CurrentWifiInfo? = null,
@@ -112,6 +113,9 @@ fun ConnectModal(
 
     var importListSearch by remember { mutableStateOf("") }
     var optionBSubTab by remember { mutableIntStateOf(0) } // 0: Parsed Entries, 1: Loaded Batch (if any)
+    var selectedCredentialOption by remember { mutableIntStateOf(0) } // 0: Option A, 1: Option B
+    var manualPassword by remember { mutableStateOf("") }
+    var manualPasswordRevealed by remember { mutableStateOf(false) }
 
     val filteredImported = remember(importedEntries, importListSearch) {
         importedEntries.filter {
@@ -356,16 +360,114 @@ fun ConnectModal(
                     Spacer(modifier = Modifier.height(14.dp))
                 }
 
-                // =====================================================================
-                // CREDENTIAL SOURCE: IMPORTED CANDIDATES ONLY
-                // No manual password TextField or manualPassword state exists.
-                // =====================================================================
+                // Credential source selector
+                if (!isOpenNetwork) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                            .padding(4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        FilledTonalButton(
+                            onClick = { selectedCredentialOption = 0 },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.filledTonalButtonColors(
+                                containerColor = if (selectedCredentialOption == 0)
+                                    MaterialTheme.colorScheme.primaryContainer
+                                else MaterialTheme.colorScheme.surfaceVariant
+                            )
+                        ) {
+                            Text("Option A — Enter Password")
+                        }
+                        FilledTonalButton(
+                            onClick = { selectedCredentialOption = 1 },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.filledTonalButtonColors(
+                                containerColor = if (selectedCredentialOption == 1)
+                                    MaterialTheme.colorScheme.primaryContainer
+                                else MaterialTheme.colorScheme.surfaceVariant
+                            )
+                        ) {
+                            Text("Option B — Import List (${importedEntries.size})")
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+                }
+
                 Column(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
                 ) {
-                    if (isOpenNetwork) {
+                    if (!isOpenNetwork && selectedCredentialOption == 0) {
+                        Text(
+                            text = "Enter Password Manually",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = manualPassword,
+                            onValueChange = { manualPassword = it },
+                            label = { Text("Wi-Fi Password") },
+                            singleLine = true,
+                            visualTransformation = if (manualPasswordRevealed)
+                                androidx.compose.ui.text.input.VisualTransformation.None
+                            else androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                            trailingIcon = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    if (manualPassword.isNotEmpty()) {
+                                        IconButton(onClick = { manualPassword = "" }) {
+                                            Icon(Icons.Filled.Close, contentDescription = "Clear password")
+                                        }
+                                    }
+                                    IconButton(onClick = { manualPasswordRevealed = !manualPasswordRevealed }) {
+                                        Icon(
+                                            imageVector = if (manualPasswordRevealed) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                                            contentDescription = if (manualPasswordRevealed) "Hide password" else "Show password"
+                                        )
+                                    }
+                                }
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("manual_password_field")
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Checkbox(
+                                checked = saveToVault,
+                                onCheckedChange = { saveToVault = it }
+                            )
+                            Text("Save to Authorized Credentials Vault")
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Button(
+                            onClick = {
+                                if (manualPassword.isNotBlank()) {
+                                    onConnectManual?.invoke(
+                                        network.ssid,
+                                        manualPassword,
+                                        network.securityType,
+                                        saveToVault
+                                    )
+                                }
+                            },
+                            enabled = manualPassword.isNotBlank() &&
+                                    connectionState !is WifiConnectionState.Connecting,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("manual_connect_button"),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text("Connect")
+                        }
+                    } else if (isOpenNetwork) {
                         Card(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(12.dp),
@@ -412,12 +514,12 @@ fun ConnectModal(
                         ) {
                             Column {
                                 Text(
-                                    text = "Candidate Passwords",
+                                    text = "Imported Candidates",
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold
                                 )
                                 Text(
-                                    text = "Passwords come strictly from imported list",
+                                    text = "Select an imported candidate to connect",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.primary
                                 )
