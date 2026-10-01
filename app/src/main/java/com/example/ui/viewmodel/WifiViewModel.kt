@@ -403,17 +403,6 @@ class WifiViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun saveManualCredential(ssid: String, password: String, notes: String = "") {
-        viewModelScope.launch {
-            credentialRepo.saveCredential(
-                ssid = ssid,
-                plainPassword = password,
-                securityType = "WPA2_PSK",
-                notes = notes,
-                importedFrom = "Manual Entry"
-            )
-        }
-    }
 
     // Settings
     fun toggleBackgroundMonitoring(enabled: Boolean) {
