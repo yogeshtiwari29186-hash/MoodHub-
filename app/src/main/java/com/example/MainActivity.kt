@@ -51,6 +51,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.core.content.ContextCompat
@@ -72,10 +73,13 @@ import com.example.ui.viewmodel.WifiViewModel
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
+    private val appOpenAdManager = AppOpenAdManager()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         MobileAds.initialize(this)
+        appOpenAdManager.loadAd(this, showWhenLoaded = true)
         setContent {
             val viewModel: WifiViewModel = viewModel()
             val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
@@ -87,6 +91,11 @@ class MainActivity : ComponentActivity() {
             }
 
         }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        appOpenAdManager.showAdIfAvailable(this)
     }
 }
 
@@ -356,6 +365,7 @@ fun WifiManagerAppRoot(viewModel: WifiViewModel, canStartTest: Boolean, showInte
                             coroutineScope.launch { snackbarHostState.showSnackbar("Start Test unavailable") }
                         } else {
                         routerTestTargetSsid = currentInfo.ssid.ifBlank { networks.firstOrNull()?.ssid ?: "" }
+                        showStartTestAd()
                         showRouterTestModal = true
                         }
                     },
@@ -366,7 +376,8 @@ fun WifiManagerAppRoot(viewModel: WifiViewModel, canStartTest: Boolean, showInte
                         }
                     },
                     onNavigateToNetworkDetails = { selectedTab = 3 },
-                    onOpenWifiSettings = { viewModel.openWifiSettings() }
+                    onOpenWifiSettings = { viewModel.openWifiSettings() },
+                    nativeAdContent = { NativeAdvancedAd() }
                 )
                 1 -> ConnectedDevicesScreen(
                     currentWifiInfo = currentInfo,
