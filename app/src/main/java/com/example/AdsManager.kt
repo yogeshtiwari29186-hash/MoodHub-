@@ -7,9 +7,35 @@ import com.google.android.gms.ads.FullScreenContentCallback
 import com.google.android.gms.ads.LoadAdError
 import com.google.android.gms.ads.interstitial.InterstitialAd
 import com.google.android.gms.ads.interstitial.InterstitialAdLoadCallback
+import com.google.android.gms.ads.appopen.AppOpenAd
 
 object AdsManager {
     private const val START_TEST_AD_UNIT_ID = "ca-app-pub-1835719222780575/3065428792"
+    private const val APP_OPEN_AD_UNIT_ID = "ca-app-pub-1835719222780575/9119701259"
+    private var appOpenShownThisLaunch = false
+
+    fun showAppOpenAd(activity: Activity) {
+        if (appOpenShownThisLaunch) return
+        appOpenShownThisLaunch = true
+
+        AppOpenAd.load(
+            activity,
+            APP_OPEN_AD_UNIT_ID,
+            AdRequest.Builder().build(),
+            object : AppOpenAd.AppOpenAdLoadCallback() {
+                override fun onAdFailedToLoad(error: LoadAdError) {
+                    // Continue opening the app normally when no ad is available.
+                }
+
+                override fun onAdLoaded(ad: AppOpenAd) {
+                    ad.fullScreenContentCallback = object : FullScreenContentCallback() {
+                        override fun onAdFailedToShowFullScreenContent(adError: AdError) = Unit
+                    }
+                    ad.show(activity)
+                }
+            }
+        )
+    }
 
     fun showTwoStartTestAds(activity: Activity, onFinished: () -> Unit) {
         showInterstitial(activity, 1, onFinished)
