@@ -248,13 +248,19 @@ fun WifiManagerAppRoot(viewModel: WifiViewModel) {
             )
         },
         bottomBar = {
-            NavigationBar(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .windowInsetsPadding(WindowInsets.navigationBars)
-                    .testTag("bottom_navigation_bar"),
-                containerColor = MaterialTheme.colorScheme.surfaceContainer
+            Column(
+                modifier = Modifier.fillMaxWidth()
             ) {
+                AdsManager.BannerAd(
+                    modifier = Modifier.fillMaxWidth()
+                )
+                NavigationBar(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .windowInsetsPadding(WindowInsets.navigationBars)
+                        .testTag("bottom_navigation_bar"),
+                    containerColor = MaterialTheme.colorScheme.surfaceContainer
+                ) {
                 NavigationBarItem(
                     selected = selectedTab == 0,
                     onClick = { selectedTab = 0 },
@@ -320,6 +326,7 @@ fun WifiManagerAppRoot(viewModel: WifiViewModel) {
                     label = { Text("Settings") },
                     modifier = Modifier.testTag("nav_tab_settings")
                 )
+                }
             }
         }
     ) { innerPadding ->
