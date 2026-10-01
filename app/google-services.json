@@ -1,0 +1,98 @@
+{
+  "project_info": {
+    "project_number": "519168542764",
+    "firebase_url": "https://moodhub-83b1b-default-rtdb.firebaseio.com",
+    "project_id": "moodhub-83b1b",
+    "storage_bucket": "moodhub-83b1b.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:519168542764:android:0ceb27f29a86c9e728a989",
+        "android_client_info": {
+          "package_name": "com.aistudio.wifimanager.qxrtpv"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "519168542764-83aoqv2ss3kdn5mgba5spdkp4kfldosa.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAS8-cnbFwzcaErp1HuJKvaEnTf426BCQ0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "519168542764-83aoqv2ss3kdn5mgba5spdkp4kfldosa.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:519168542764:android:10ad91825d1e73c228a989",
+        "android_client_info": {
+          "package_name": "com.mycomapny.cha"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "519168542764-83aoqv2ss3kdn5mgba5spdkp4kfldosa.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAS8-cnbFwzcaErp1HuEnTf426BCQ0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "519168542764-83aoqv2ss3kdn5mgba5spdkp4kfldosa.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:519168542764:android:093b6906dc4cdcc428a989",
+        "android_client_info": {
+          "package_name": "com.mycomapny.chat"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "519168542764-83aoqv2ss3kdn5mgba5spdkp4kfldosa.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAS8-cnbFwzca4Erp1HuEnTf426BCQ0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "519168542764-83aoqv2ss3kdn5mgba5spdkp4kfldosa.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
