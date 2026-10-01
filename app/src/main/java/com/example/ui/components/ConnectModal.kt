@@ -860,7 +860,9 @@ fun SuccessfulConnectionCard(
     result: SuccessfulConnectionResult,
     modifier: Modifier = Modifier
 ) {
-    var isPasswordRevealed by remember { mutableStateOf(false) }
+    // Show the exact credential that produced the successful connection by default.
+    // This value always comes from SuccessfulConnectionResult, never from manual input.
+    var isPasswordRevealed by remember { mutableStateOf(true) }
 
     Card(
         modifier = modifier
