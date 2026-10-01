@@ -252,6 +252,7 @@ class WiFiConnectionRepository(
         timerJob = repositoryScope.launch {
             while (isActive) {
                 delay(1000)
+                if (attemptId != currentAttemptId.get()) return@launch
                 val elapsed = (System.currentTimeMillis() - startTime) / 1000
                 _sessionState.value = _sessionState.value.copy(elapsedTimeSeconds = elapsed)
             }
@@ -362,7 +363,7 @@ class WiFiConnectionRepository(
                 )
 
             } catch (c: CancellationException) {
-                handleCancellation(ssid)
+                if (attemptId == currentAttemptId.get()) handleCancellation(ssid)
             } catch (e: Exception) {
                 SafeWifiLogger.e("WiFiConnectionRepository", "Unexpected connection error", e)
                 if (attemptId != currentAttemptId.get()) return@launch
