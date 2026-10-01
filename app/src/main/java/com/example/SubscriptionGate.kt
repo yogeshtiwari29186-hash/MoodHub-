@@ -24,7 +24,7 @@ private const val AD_NETWORK = "ca-app-pub-1835719222780575/3065428792"
 private const val AD_DEVICE_SETTINGS = "ca-app-pub-1835719222780575/4742220978"
 
 @Composable
-fun SubscriptionGate(content: @Composable (Boolean, Boolean, () -> Unit) -> Unit) {
+fun SubscriptionGate(content: @Composable (Boolean, Boolean, () -> Unit, () -> Unit) -> Unit) {
     val context = LocalContext.current
     val activity = context as? Activity
     var currentAd by remember { mutableStateOf<InterstitialAd?>(null) }
