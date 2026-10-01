@@ -377,7 +377,6 @@ fun WifiManagerAppRoot(viewModel: WifiViewModel) {
                     onEditImportedEntry = { id, ssid, pass -> viewModel.updateImportedEntry(id, ssid, pass) },
                     onDeleteImportedEntry = { id -> viewModel.deleteImportedEntry(id) },
                     onClearAllImported = { viewModel.clearAllImportedEntries() },
-                    onManualAdd = { ssid, pass, notes -> viewModel.saveManualCredential(ssid, pass, notes) },
                     onSelectToConnect = { targetSsid, pass ->
                         val foundNet = networks.find { it.ssid.equals(targetSsid, ignoreCase = true) }
                             ?: WifiNetwork(
