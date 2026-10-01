@@ -59,14 +59,19 @@ jobs:
           gradle-version: '9.3.1'
           validate-wrappers: false
 
-      - name: Create temporary debug keystore
+      - name: Prepare persistent debug signing keystore
+        env:
+          ANDROID_DEBUG_KEYSTORE_BASE64: ${{ secrets.ANDROID_DEBUG_KEYSTORE_BASE64 }}
         run: |
           set -euo pipefail
 
-          if [ -f "./debug.keystore" ]; then
-            echo "./debug.keystore already exists. Skipping generation."
+          if [ -n "${ANDROID_DEBUG_KEYSTORE_BASE64:-}" ]; then
+            echo "Restoring persistent debug keystore from GitHub Actions secret."
+            printf '%s' "$ANDROID_DEBUG_KEYSTORE_BASE64" | base64 --decode > ./debug.keystore
           else
-            echo "Generating temporary debug keystore..."
+            echo "WARNING: ANDROID_DEBUG_KEYSTORE_BASE64 is not configured."
+            echo "Generating a temporary debug keystore for this run."
+            echo "Future APK updates will require the same persistent keystore to be configured."
             "${JAVA_HOME}/bin/keytool" -genkeypair \
               -keystore ./debug.keystore \
               -alias androiddebugkey \
@@ -78,12 +83,12 @@ jobs:
               -dname "CN=Android Debug,O=Android,C=US"
           fi
 
-          if [ ! -f "./debug.keystore" ]; then
-            echo "Error: ./debug.keystore could not be created or found."
+          if [ ! -f "./debug.keystore" ] || [ ! -s "./debug.keystore" ]; then
+            echo "Error: ./debug.keystore is missing or empty."
             exit 1
           fi
 
-          echo "Temporary debug keystore verified."
+          echo "Debug signing keystore prepared."
 
       - name: Build debug APK
         run: gradle :app:assembleDebug --stacktrace --no-daemon
@@ -122,6 +127,15 @@ jobs:
 
           echo "Verified APK: $EXPECTED_APK"
           echo "APK size: $(stat -c%s "$EXPECTED_APK") bytes"
+
+          APKSIGNER="$(find "${ANDROID_HOME}/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          if [ -z "$APKSIGNER" ]; then
+            echo "Error: apksigner was not found in Android SDK build-tools."
+            exit 1
+          fi
+
+          echo "Verifying APK signature with: $APKSIGNER"
+          "$APKSIGNER" verify --verbose "$EXPECTED_APK"
 
       - name: Upload debug APK artifact
         uses: actions/upload-artifact@v4
