@@ -153,53 +153,6 @@ class WifiViewModel(application: Application) : AndroidViewModel(application) {
         _selectedNetwork.value = network
     }
 
-    fun findCandidateForCredential(ssid: String, credential: String): Candidate {
-        val imported = _importedEntries.value.firstOrNull {
-            it.password == credential || (it.ssid.equals(ssid, ignoreCase = true) && it.password == credential)
-        }
-        if (imported != null) {
-            val lineNum = imported.lineNumber ?: (_importedEntries.value.indexOf(imported) + 1).toLong()
-            val totalL = imported.totalLines ?: (if (_importedEntries.value.isNotEmpty()) _importedEntries.value.size.toLong() else null)
-            val bNum = imported.batchNumber ?: (((lineNum - 1) / 500) + 1)
-            val totalB = imported.totalBatches ?: (totalL?.let { ((it - 1) / 500) + 1 })
-            val posInB = imported.positionInBatch ?: (((lineNum - 1) % 500) + 1).toInt()
-            return Candidate(
-                credential = credential,
-                source = imported.source.ifBlank { "Imported TXT" },
-                globalLineNumber = lineNum,
-                batchNumber = bNum,
-                positionInBatch = posInB,
-                totalLines = totalL,
-                totalBatches = totalB
-            )
-        }
-
-        val batchState = batchUiState.value
-        val batchEntry = batchState.currentEntries.firstOrNull { it.password == credential }
-        if (batchEntry != null) {
-            val totalE = batchState.totalEntries.takeIf { it > 0 }
-            val bNum = batchState.currentBatch.toLong()
-            val totalB = batchState.totalBatches.toLong().takeIf { it > 0 }
-            return Candidate(
-                credential = credential,
-                source = "Imported TXT",
-                globalLineNumber = batchEntry.globalIndex,
-                batchNumber = bNum,
-                positionInBatch = batchEntry.batchIndex,
-                totalLines = totalE,
-                totalBatches = totalB
-            )
-        }
-
-        return Candidate(
-            credential = credential,
-            source = "Manually Entered",
-            globalLineNumber = null,
-            batchNumber = null,
-            positionInBatch = null
-        )
-    }
-
     fun connectCandidate(
         ssid: String,
         candidate: Candidate,
@@ -207,6 +160,11 @@ class WifiViewModel(application: Application) : AndroidViewModel(application) {
         saveToVault: Boolean = false
     ) {
         viewModelScope.launch {
+            if (securityType != WifiSecurityType.OPEN &&
+                !candidate.source.equals("Imported TXT", ignoreCase = true)
+            ) {
+                return@launch
+            }
             if (saveToVault && candidate.credential.isNotBlank()) {
                 credentialRepo.saveCredential(
                     ssid = ssid,
@@ -217,28 +175,6 @@ class WifiViewModel(application: Application) : AndroidViewModel(application) {
                 )
             }
             wifiConnectionRepository.connectCandidate(ssid, candidate, securityType)
-        }
-    }
-
-    fun connectToNetwork(
-        ssid: String,
-        password: String,
-        securityType: WifiSecurityType,
-        saveToVault: Boolean,
-        candidate: Candidate? = null
-    ) {
-        viewModelScope.launch {
-            val targetCandidate = candidate ?: findCandidateForCredential(ssid, password)
-            if (saveToVault && password.isNotBlank()) {
-                credentialRepo.saveCredential(
-                    ssid = ssid,
-                    plainPassword = password,
-                    securityType = securityType.name,
-                    notes = "Saved during connection",
-                    importedFrom = targetCandidate.source
-                )
-            }
-            wifiConnectionRepository.connectCandidate(ssid, targetCandidate, securityType)
         }
     }
 
