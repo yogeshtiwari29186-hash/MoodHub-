@@ -101,6 +101,7 @@ class WiFiConnectionRepository(
             while (isActive) {
                 delay(1000)
                 if (attemptId != currentAttemptId.get()) return@launch
+                if (attemptId != currentAttemptId.get()) return@launch
                 val elapsed = (System.currentTimeMillis() - startTime) / 1000
                 _sessionState.value = _sessionState.value.copy(elapsedTimeSeconds = elapsed)
             }
@@ -154,7 +155,6 @@ class WiFiConnectionRepository(
                             linkSpeedMbps = outcome.linkSpeedMbps,
                             statusMessage = "Successfully connected & verified on $ssid!",
                             confirmedPassword = candidate.credential,
-                            successfulResult = successfulResult,
                             errorMessage = null
                         )
                     }
@@ -179,7 +179,6 @@ class WiFiConnectionRepository(
                 if (attemptId == currentAttemptId.get()) handleCancellation(ssid)
             } catch (e: Exception) {
                 SafeWifiLogger.e("WiFiConnectionRepository", "Unexpected candidate connection error", e)
-                if (attemptId != currentAttemptId.get()) return@launch
                 if (attemptId != currentAttemptId.get()) return@launch
                 timerJob?.cancel()
                 wifiConnector.disconnectCurrent()
@@ -227,7 +226,7 @@ class WiFiConnectionRepository(
         }
 
         // Cancel previous work cleanly
-        val attemptId = ++currentAttemptId
+        val attemptId = currentAttemptId.incrementAndGet()
         cancelCurrentJobs(shouldSetCancelledState = false)
         wifiConnector.disconnectCurrent()
         _successfulConnectionResult.value = null
@@ -289,8 +288,8 @@ class WiFiConnectionRepository(
                         timeoutMs = timeoutPerCandidateMs
                     )
 
-                    if (attemptId != currentAttemptId) {
-                        SafeWifiLogger.w("WiFiConnectionRepository", "Ignoring stale candidate outcome for attempt $attemptId (current is $currentAttemptId)")
+                    if (attemptId != currentAttemptId.get()) {
+                        SafeWifiLogger.w("WiFiConnectionRepository", "Ignoring stale candidate outcome for attempt $attemptId (current is ${currentAttemptId.get()})")
                         return@launch
                     }
 
@@ -321,7 +320,6 @@ class WiFiConnectionRepository(
                                 verifiedGateway = outcome.gateway,
                                 linkSpeedMbps = outcome.linkSpeedMbps,
                                 statusMessage = "Successfully connected & verified on $ssid!",
-                                successfulResult = successfulResult,
                                 errorMessage = null
                             )
                             return@launch
@@ -348,7 +346,8 @@ class WiFiConnectionRepository(
                     }
                 }
 
-                // All candidates exhausted without success -> transition to FAILED
+                // All candidates exhausted without success -> transition to FAILED.
+                if (attemptId != currentAttemptId.get()) return@launch
                 SafeWifiLogger.w(
                     "WiFiConnectionRepository",
                     "All ${candidates.size} candidates exhausted. Transition -> FAILED"
@@ -366,6 +365,7 @@ class WiFiConnectionRepository(
                 handleCancellation(ssid)
             } catch (e: Exception) {
                 SafeWifiLogger.e("WiFiConnectionRepository", "Unexpected connection error", e)
+                if (attemptId != currentAttemptId.get()) return@launch
                 timerJob?.cancel()
                 wifiConnector.disconnectCurrent()
                 _sessionState.value = _sessionState.value.copy(
@@ -404,7 +404,7 @@ class WiFiConnectionRepository(
      * Resets the repository back to IDLE state.
      */
     fun reset() {
-        currentAttemptId++
+        currentAttemptId.incrementAndGet()
         cancelCurrentJobs(shouldSetCancelledState = false)
         wifiConnector.resetState()
         _sessionState.value = WifiConnectionSessionState()
