@@ -73,6 +73,7 @@ import com.example.model.ImportedEntry
 import com.example.model.PasswordBatchUiState
 import com.example.model.SuccessfulConnectionResult
 import com.example.model.WifiNetwork
+import com.example.model.WifiSecurityType
 import com.example.ui.theme.SignalGreen
 import com.example.wifi.WifiConnectionState
 import java.text.NumberFormat
