@@ -23,6 +23,8 @@ import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -68,6 +70,7 @@ fun AuthorizedRouterTestModal(
     modifier: Modifier = Modifier
 ) {
     var hasUserAuthorized by remember { mutableStateOf(false) }
+    var showConfirmedPassword by remember { mutableStateOf(false) }
 
     Dialog(
         onDismissRequest = {
@@ -279,6 +282,34 @@ fun AuthorizedRouterTestModal(
                                         )
                                     }
                                     Spacer(modifier = Modifier.height(6.dp))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "Password",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                            Text(
+                                                text = if (showConfirmedPassword) result.confirmedPassword
+                                                else "•".repeat(result.confirmedPassword.length.coerceAtLeast(8)),
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                        }
+                                        IconButton(
+                                            onClick = { showConfirmedPassword = !showConfirmedPassword }
+                                        ) {
+                                            Icon(
+                                                imageVector = if (showConfirmedPassword) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                                                contentDescription = if (showConfirmedPassword) "Hide password" else "Show password"
+                                            )
+                                        }
+                                    }
                                     Text(
                                         text = "Matched password on attempt #${result.attemptsCount} in ${result.timeSeconds}s.",
                                         style = MaterialTheme.typography.bodySmall,
