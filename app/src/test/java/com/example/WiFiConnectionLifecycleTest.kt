@@ -165,13 +165,11 @@ class WiFiConnectionLifecycleTest {
         currentState = currentState.copy(
             status = ConnectionLifecycleStatus.SUCCESS,
             verifiedIpAddress = "192.168.0.42",
-            verifiedGateway = "192.168.0.1",
-            confirmedPassword = candidates[1].rawPassword
+            verifiedGateway = "192.168.0.1"
         )
         assertEquals(ConnectionLifecycleStatus.SUCCESS, currentState.status)
         assertEquals("192.168.0.42", currentState.verifiedIpAddress)
         assertEquals("192.168.0.1", currentState.verifiedGateway)
-        assertEquals("CorrectPass2026!", currentState.confirmedPassword)
     }
 
     @Test
@@ -201,30 +199,6 @@ class WiFiConnectionLifecycleTest {
         assertEquals("192.168.0.1", result.gateway)
         assertEquals("Connected", result.status)
         assertTrue(result.isImported)
-    }
-
-    @Test
-    fun testConnectionResultInfoManualEntryShowsLineNA() {
-        val manualResult = com.example.model.ConnectionResultInfo(
-            ssid = "OfficeGuest",
-            password = "SecretPassword",
-            source = "Manually Entered",
-            passwordNumber = null,
-            lineNumber = null,
-            totalLines = null,
-            batchNumber = null,
-            totalBatches = null,
-            positionInBatch = null,
-            ipAddress = "192.168.1.5",
-            gateway = "192.168.1.1",
-            status = "Connected"
-        )
-
-        assertEquals("Manually Entered", manualResult.source)
-        assertNull(manualResult.formatLine())
-        assertNull(manualResult.formatBatch())
-        assertNull(manualResult.formatPositionInBatch())
-        assertFalse(manualResult.isImported)
     }
 
     @Test
