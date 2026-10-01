@@ -69,18 +69,8 @@ jobs:
             echo "Restoring persistent debug keystore from GitHub Actions secret."
             printf '%s' "$ANDROID_DEBUG_KEYSTORE_BASE64" | base64 --decode > ./debug.keystore
           else
-            echo "WARNING: ANDROID_DEBUG_KEYSTORE_BASE64 is not configured."
-            echo "Generating a temporary debug keystore for this run."
-            echo "Future APK updates will require the same persistent keystore to be configured."
-            "${JAVA_HOME}/bin/keytool" -genkeypair \
-              -keystore ./debug.keystore \
-              -alias androiddebugkey \
-              -keyalg RSA \
-              -keysize 2048 \
-              -validity 10000 \
-              -storepass android \
-              -keypass android \
-              -dname "CN=Android Debug,O=Android,C=US"
+            echo "Restoring repository stable debug keystore."
+            base64 --decode ./debug.keystore.b64 > ./debug.keystore
           fi
 
           if [ ! -f "./debug.keystore" ] || [ ! -s "./debug.keystore" ]; then
@@ -89,6 +79,7 @@ jobs:
           fi
 
           echo "Debug signing keystore prepared."
+          "${JAVA_HOME}/bin/keytool" -list -keystore ./debug.keystore -storepass android -alias androiddebugkey >/dev/null
 
       - name: Build debug APK
         run: gradle :app:assembleDebug --stacktrace --no-daemon
@@ -220,7 +211,7 @@ jobs:
           - Source commit SHA: ${GITHUB_SHA}
           - Intended for testing.
           - Not a Play Store production release.
-          - Signed only with a temporary debug keystore.
+          - Signed with the stable debug keystore used by this repository.
           EOF_NOTES
           )
 
