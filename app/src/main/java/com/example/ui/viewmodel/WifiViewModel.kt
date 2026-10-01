@@ -161,7 +161,8 @@ class WifiViewModel(application: Application) : AndroidViewModel(application) {
     ) {
         viewModelScope.launch {
             if (securityType != WifiSecurityType.OPEN &&
-                !candidate.source.equals("Imported TXT", ignoreCase = true)
+                !candidate.source.equals("Imported TXT", ignoreCase = true) &&
+                !candidate.source.equals("Manually Entered", ignoreCase = true)
             ) {
                 return@launch
             }
