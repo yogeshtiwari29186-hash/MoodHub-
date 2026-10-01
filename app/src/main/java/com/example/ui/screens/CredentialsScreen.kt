@@ -26,7 +26,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteSweep
@@ -106,7 +105,6 @@ fun CredentialsScreen(
     onEditImportedEntry: (id: String, newSsid: String, newPassword: String) -> Unit,
     onDeleteImportedEntry: (id: String) -> Unit,
     onClearAllImported: () -> Unit,
-    onManualAdd: (ssid: String, password: String, notes: String) -> Unit,
     onSelectToConnect: (ssid: String, password: String) -> Unit,
     onPauseImport: () -> Unit = {},
     onResumeImport: () -> Unit = {},
@@ -124,8 +122,6 @@ fun CredentialsScreen(
     var currentSingleIndex by remember { mutableIntStateOf(0) }
     var searchQuery by remember { mutableStateOf("") }
     var jumpInput by remember { mutableStateOf("") }
-
-    var showAddDialog by remember { mutableStateOf(false) }
     var showClearConfirm by remember { mutableStateOf(false) }
 
     // Dialog state for editing a saved credential
@@ -242,18 +238,6 @@ fun CredentialsScreen(
                         Icon(Icons.Filled.FileDownload, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(6.dp))
                         Text("Import TXT/CSV")
-                    }
-
-                    FilledTonalButton(
-                        onClick = { showAddDialog = true },
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("add_credential_manually_button"),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Add Manual")
                     }
                 }
             }
