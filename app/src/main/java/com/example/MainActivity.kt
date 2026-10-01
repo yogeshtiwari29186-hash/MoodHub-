@@ -443,8 +443,18 @@ fun WifiManagerAppRoot(viewModel: WifiViewModel) {
                     onDeleteImportedEntry = { id -> viewModel.deleteImportedEntry(id) },
                     onConnectCandidate = { ssid, candidate, securityType, saveToVault ->
                         viewModel.connectCandidate(ssid, candidate, securityType, saveToVault)
-                    },
-                    onCancelConnection = { viewModel.cancelConnection() },
+                    },                     onConnectManual = { ssid, password, securityType, saveToVault ->
+                         viewModel.connectCandidate(
+                             ssid = ssid,
+                             candidate = com.example.model.Candidate(
+                                 credential = password,
+                                 source = com.example.model.SOURCE_MANUAL
+                             ),
+                             securityType = securityType,
+                             saveToVault = saveToVault
+                         )
+                     },
+                     onCancelConnection = { viewModel.cancelConnection() },
                     onOpenRouterTest = {
                         routerTestTargetSsid = network.ssid
                         showRouterTestModal = true
