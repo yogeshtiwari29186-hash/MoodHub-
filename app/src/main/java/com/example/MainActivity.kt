@@ -101,7 +101,7 @@ fun WifiManagerAppRoot(viewModel: WifiViewModel, canStartTest: Boolean, showInte
     var firstTabSelection by remember { mutableStateOf(true) }
 
     LaunchedEffect(selectedTab) {
-        if (firstTabSelection) firstTabSelection = false else showInterstitialAd()
+        if (firstTabSelection) firstTabSelection = false else if (selectedTab == 1 || selectedTab == 3 || selectedTab == 4) showInterstitialAd()
     }
 
     // State collections
