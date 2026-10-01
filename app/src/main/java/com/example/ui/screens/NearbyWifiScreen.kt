@@ -87,6 +87,7 @@ fun NearbyWifiScreen(
     onNavigateToDevices: () -> Unit,
     onNavigateToNetworkDetails: () -> Unit,
     onOpenWifiSettings: () -> Unit,
+    nativeAdContent: @Composable () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -159,6 +160,10 @@ fun NearbyWifiScreen(
                 Text("Import TXT/CSV", style = MaterialTheme.typography.labelMedium)
             }
         }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        nativeAdContent()
 
         Spacer(modifier = Modifier.height(8.dp))
 
