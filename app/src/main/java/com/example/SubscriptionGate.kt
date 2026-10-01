@@ -11,6 +11,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import kotlinx.coroutines.delay
 import com.google.android.gms.ads.AdRequest
 import com.google.android.gms.ads.AdSize
 import com.google.android.gms.ads.AdView
@@ -63,6 +64,12 @@ fun SubscriptionGate(content: @Composable (Boolean, Boolean) -> Unit) {
     }
 
     LaunchedEffect(refresh, auth.currentUser?.uid) { load() }
+    LaunchedEffect(state.status, state.expiryMillis) {
+        if ((state.status == "trial" || state.status == "active") && state.expiryMillis > 0) {
+            while (System.currentTimeMillis() < state.expiryMillis) delay(30_000)
+            load()
+        }
+    }
 
     if (state.loading) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Checking account…") }
@@ -134,7 +141,8 @@ private fun SubscriptionNotice(onRefresh: () -> Unit) {
     Card(Modifier.fillMaxWidth().padding(12.dp)) {
         Column(Modifier.padding(14.dp)) {
             Text("Subscription required", style = MaterialTheme.typography.titleMedium)
-            Text("₹30 / 2 months • Owner: $OWNER_PHONE")
+            Text(when (state.status) { "pending" -> "Approval pending • ₹30 / 2 months"; "rejected" -> "Request rejected • ₹30 / 2 months"; "expired" -> "Subscription expired • ₹30 / 2 months"; else -> "₹30 / 2 months" })
+            Text("Owner: $OWNER_PHONE")
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = {
@@ -184,7 +192,7 @@ private fun OwnerPanel(onLogout: () -> Unit) {
                         OutlinedButton(onClick = {
                             db.collection("subscriptions").document(d.id).set(mapOf("status" to "rejected"), SetOptions.merge())
                                 .addOnSuccessListener { message = "Rejected: $email"; load() }
-                        }) { Text("Reject") }
+                        }) { Text("Disable") }
                     }
                 }
             }
