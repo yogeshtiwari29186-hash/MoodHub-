@@ -26,8 +26,9 @@ service cloud.firestore {
       allow create: if signedIn() &&
         request.auth.uid == uid &&
         request.resource.data.uid == uid &&
-        request.resource.data.status == "trial" &&
-        request.resource.data.expiryAt <= request.time + duration.value(31, "d");
+        ((request.resource.data.status == "trial" &&
+          request.resource.data.expiryAt <= request.time + duration.value(31, "d")) ||
+         request.resource.data.status == "pending");
 
       // Only the owner can approve, extend, reject, or disable subscriptions.
       allow update, delete: if isOwner();
