@@ -45,7 +45,6 @@ data class WifiConnectionSessionState(
     val errorMessage: String? = null,
     val elapsedTimeSeconds: Long = 0L,
     val canOpenSettings: Boolean = false,
-    val successfulResult: SuccessfulConnectionResult? = null
 ) {
     val isRunning: Boolean
         get() = status == ConnectionLifecycleStatus.CONNECTING
