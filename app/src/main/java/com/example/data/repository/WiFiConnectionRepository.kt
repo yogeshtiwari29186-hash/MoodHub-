@@ -154,7 +154,6 @@ class WiFiConnectionRepository(
                             verifiedGateway = outcome.gateway,
                             linkSpeedMbps = outcome.linkSpeedMbps,
                             statusMessage = "Successfully connected & verified on $ssid!",
-                            confirmedPassword = candidate.credential,
                             errorMessage = null
                         )
                     }
