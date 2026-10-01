@@ -56,6 +56,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.google.android.gms.ads.MobileAds
 import com.example.model.WifiNetwork
 import com.example.model.WifiSecurityType
 import com.example.ui.components.AuthorizedRouterTestModal
@@ -74,12 +75,15 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        MobileAds.initialize(this)
         setContent {
             val viewModel: WifiViewModel = viewModel()
             val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
 
             WifiManagerTheme(themePreference = themeMode) {
-                WifiManagerAppRoot(viewModel = viewModel)
+                SubscriptionGate { canStartTest, _ ->
+                    WifiManagerAppRoot(viewModel = viewModel, canStartTest = canStartTest)
+                }
             }
 
         }
@@ -88,7 +92,7 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun WifiManagerAppRoot(viewModel: WifiViewModel) {
+fun WifiManagerAppRoot(viewModel: WifiViewModel, canStartTest: Boolean) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -343,8 +347,12 @@ fun WifiManagerAppRoot(viewModel: WifiViewModel) {
                     onSelectNetwork = { network -> viewModel.selectNetwork(network) },
                     onImportFileClick = { openDocumentPicker() },
                     onStartTestClick = {
+                        if (!canStartTest) {
+                            coroutineScope.launch { snackbarHostState.showSnackbar("Subscription approval required") }
+                        } else {
                         routerTestTargetSsid = currentInfo.ssid.ifBlank { networks.firstOrNull()?.ssid ?: "" }
                         showRouterTestModal = true
+                        }
                     },
                     onNavigateToDevices = {
                         selectedTab = 1
@@ -457,8 +465,12 @@ fun WifiManagerAppRoot(viewModel: WifiViewModel) {
                      },
                      onCancelConnection = { viewModel.cancelConnection() },
                     onOpenRouterTest = {
-                        routerTestTargetSsid = network.ssid
-                        showRouterTestModal = true
+                        if (!canStartTest) {
+                            coroutineScope.launch { snackbarHostState.showSnackbar("Subscription approval required") }
+                        } else {
+                            routerTestTargetSsid = network.ssid
+                            showRouterTestModal = true
+                        }
                     },
                     onOpenSettings = { viewModel.openWifiSettings() },
                     onDismiss = { viewModel.dismissConnectModal() }
