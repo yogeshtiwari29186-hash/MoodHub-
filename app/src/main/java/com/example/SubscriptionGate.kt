@@ -28,8 +28,7 @@ fun SubscriptionGate(content: @Composable (Boolean, Boolean, () -> Unit) -> Unit
     val context = LocalContext.current
     val activity = context as? Activity
     var currentAd by remember { mutableStateOf<InterstitialAd?>(null) }
-    var nextAdUnit by remember { mutableStateOf(AD_NETWORK) }
-
+    
     fun loadAd(unitId: String) {
         if (activity == null) return
         InterstitialAd.load(
@@ -39,7 +38,6 @@ fun SubscriptionGate(content: @Composable (Boolean, Boolean, () -> Unit) -> Unit
             object : InterstitialAdLoadCallback() {
                 override fun onAdLoaded(ad: InterstitialAd) {
                     currentAd = ad
-                    nextAdUnit = unitId
                 }
                 override fun onAdFailedToLoad(error: LoadAdError) {
                     currentAd = null
@@ -75,7 +73,7 @@ fun SubscriptionGate(content: @Composable (Boolean, Boolean, () -> Unit) -> Unit
     }
 
     Box(Modifier.fillMaxSize()) {
-        content(true, true) { showAd(AD_NETWORK) }
+        content(true, true, { showAd(AD_NETWORK) }, { showAd(AD_START_TEST) })
         BannerAd(Modifier.align(Alignment.BottomCenter))
     }
 }
