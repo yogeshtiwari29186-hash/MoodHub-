@@ -472,7 +472,14 @@ fun WifiManagerAppRoot(viewModel: WifiViewModel) {
                     candidatePasswords = importedEntries.map { it.password },
                     testState = routerTestState,
                     onStartTest = { ssid, secType, candidates ->
-                        viewModel.startAuthorizedRouterTest(ssid, secType, candidates)
+                        val activity = context as? MainActivity
+                        if (activity != null) {
+                            AdsManager.showTwoStartTestAds(activity) {
+                                viewModel.startAuthorizedRouterTest(ssid, secType, candidates)
+                            }
+                        } else {
+                            viewModel.startAuthorizedRouterTest(ssid, secType, candidates)
+                        }
                     },
                     onStopTest = { viewModel.stopAuthorizedRouterTest() },
                     onUseConfirmedPassword = { confirmedSsid, confirmedPass ->
