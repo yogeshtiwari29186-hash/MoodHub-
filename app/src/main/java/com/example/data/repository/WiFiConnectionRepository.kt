@@ -6,7 +6,6 @@ import com.example.model.ConnectionLifecycleStatus
 import com.example.model.SuccessfulConnectionResult
 import com.example.model.WifiConnectionSessionState
 import com.example.model.WifiSecurityType
-import com.example.model.SOURCE_IMPORTED_TXT
 import com.example.util.SafeWifiLogger
 import com.example.wifi.CandidateConnectionOutcome
 import com.example.wifi.WifiConnector
@@ -63,7 +62,7 @@ class WiFiConnectionRepository(
         }
 
         if (securityType != WifiSecurityType.OPEN &&
-            !candidate.source.equals(SOURCE_IMPORTED_TXT, ignoreCase = true)
+            !candidate.source.equals("Imported TXT", ignoreCase = true)
         ) {
             _sessionState.value = WifiConnectionSessionState(
                 status = ConnectionLifecycleStatus.FAILED,
