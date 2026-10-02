@@ -3,6 +3,7 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
     <!-- Wi-Fi & Network Permissions -->
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
@@ -72,6 +73,16 @@
         </service>
 
         <service
+            android:name=".service.OverlayLauncherService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.property.SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Floating Wi-Fi Manager launcher over other apps" />
+        </service>
+
+    <service
             android:name=".service.FileProcessingService"
             android:enabled="true"
             android:exported="false"
