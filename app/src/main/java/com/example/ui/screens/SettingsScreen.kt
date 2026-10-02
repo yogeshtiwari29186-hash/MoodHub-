@@ -47,6 +47,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.DisposableEffect
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -55,6 +58,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.data.preference.UserPreferencesRepository
+import com.example.service.OverlayLauncherService
 
 @Composable
 fun SettingsScreen(
@@ -75,6 +79,23 @@ fun SettingsScreen(
 
     var showClearImportedDialog by remember { mutableStateOf(false) }
     var showClearVaultDialog by remember { mutableStateOf(false) }
+    var overlayPermission by remember { mutableStateOf(Settings.canDrawOverlays(context)) }
+    var overlayRunning by remember { mutableStateOf(false) }
+
+    DisposableEffect(context) {
+        val lifecycleOwner = context as? androidx.lifecycle.LifecycleOwner
+        val observer = lifecycleOwner?.let {
+            LifecycleEventObserver { _, event ->
+                if (event == Lifecycle.Event.ON_RESUME) {
+                    overlayPermission = Settings.canDrawOverlays(context)
+                }
+            }
+        }
+        observer?.let { lifecycleOwner.lifecycle.addObserver(it) }
+        onDispose {
+            observer?.let { lifecycleOwner.lifecycle.removeObserver(it) }
+        }
+    }
 
     Column(
         modifier = modifier
@@ -214,6 +235,59 @@ fun SettingsScreen(
                         modifier = Modifier.testTag("resume_on_boot_switch")
                     )
                 }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Floating overlay launcher
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)
+        ) {
+            Column(modifier = Modifier.padding(18.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.Security, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(text = "Floating Overlay", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text(text = "Open WiFi Manager from over other apps", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+                if (!overlayPermission) {
+                    Button(
+                        onClick = {
+                            context.startActivity(
+                                Intent(
+                                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                    Uri.parse("package:" + context.packageName)
+                                )
+                            )
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    ) { Text("Allow Display Over Other Apps") }
+                } else if (!overlayRunning) {
+                    FilledTonalButton(
+                        onClick = { OverlayLauncherService.start(context); overlayRunning = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    ) { Text("Start Floating Button") }
+                } else {
+                    OutlinedButton(
+                        onClick = { OverlayLauncherService.stop(context); overlayRunning = false },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    ) { Text("Stop Floating Button") }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "A movable WiFi button stays above other apps. Tap it to open this app; long-press it to close the overlay.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
 
