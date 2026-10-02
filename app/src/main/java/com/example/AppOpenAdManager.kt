@@ -12,7 +12,7 @@ import com.google.android.gms.ads.appopen.AppOpenAd
 class AppOpenAdManager {
     companion object {
         private const val TAG = "AdMobAppOpen"
-        private const val AD_UNIT_ID = "ca-app-pub-1835719222780575/5437275416"
+        private const val AD_UNIT_ID = "ca-app-pub-2881312687834117/5284699348"
     }
 
     private var appOpenAd: AppOpenAd? = null
