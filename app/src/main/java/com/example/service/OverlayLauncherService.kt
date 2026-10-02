@@ -17,6 +17,7 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
+import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.app.NotificationCompat
@@ -53,7 +54,7 @@ class OverlayLauncherService : Service() {
                 setStroke(dp(2), Color.WHITE)
             }
             elevation = dp(8).toFloat()
-            setOnClickListener { openApp() }
+            setOnClickListener { togglePanel() }
             setOnLongClickListener {
                 stopSelf()
                 true
@@ -119,6 +120,96 @@ class OverlayLauncherService : Service() {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
         }
         startActivity(intent)
+    }
+
+    private fun togglePanel() {
+        if (panel != null) {
+            runCatching { windowManager.removeView(panel) }
+            panel = null
+            return
+        }
+        if (!Settings.canDrawOverlays(this)) return
+
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(18), dp(16), dp(18), dp(16))
+            background = GradientDrawable().apply {
+                cornerRadius = dp(20).toFloat()
+                setColor(Color.WHITE)
+                setStroke(dp(1), Color.LTGRAY)
+            }
+            elevation = dp(12).toFloat()
+        }
+
+        fun addButton(label: String, onClick: () -> Unit) {
+            val b = android.widget.Button(this).apply {
+                text = label
+                isAllCaps = false
+                setOnClickListener { onClick() }
+            }
+            box.addView(b, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(48)
+            ).apply { bottomMargin = dp(8) })
+        }
+
+        val title = TextView(this).apply {
+            text = "WiFi Manager"
+            textSize = 18f
+            setTextColor(Color.BLACK)
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            gravity = Gravity.CENTER
+        }
+        box.addView(title, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, dp(42)
+        ))
+
+        addButton("📄  Import TXT") {
+            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                type = "text/plain"
+                addCategory(Intent.CATEGORY_OPENABLE)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+            }
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            startActivity(intent)
+        }
+
+        addButton("📶  Select Wi-Fi") {
+            openApp()
+        }
+
+        addButton("▶  Start Test") {
+            android.widget.Toast.makeText(
+                this,
+                "Select an authorized Wi-Fi and imported test data first.",
+                android.widget.Toast.LENGTH_SHORT
+            ).show()
+        }
+
+        addButton("✕  Close") {
+            togglePanel()
+        }
+
+        panel = box
+
+        val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        } else {
+            WindowManager.LayoutParams.TYPE_PHONE
+        }
+
+        val params = WindowManager.LayoutParams(
+            dp(280),
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            type,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.END
+            x = dp(12)
+            y = dp(120)
+        }
+
+        windowManager.addView(box, params)
     }
 
     private fun createNotificationChannel() {
