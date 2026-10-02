@@ -8,7 +8,7 @@
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
+    <uses-permission android:nameandroid.permission.CHANGE_NETWORK_STATE" />
 
     <!-- Location Permissions required for Wi-Fi scanning -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
@@ -47,7 +47,7 @@
 
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
-            android:value="ca-app-pub-1835719222780575~3356841986" />
+            android:value="ca-app-pub-2881312687834117~4298920732" />
 
         <activity
             android:name=".MainActivity"
