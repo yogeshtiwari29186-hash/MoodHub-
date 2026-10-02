@@ -84,49 +84,55 @@ jobs:
       - name: Build debug APK
         run: gradle :app:assembleDebug --stacktrace --no-daemon
 
-      - name: Verify debug APK
+      - name: Normalize, sign and verify debug APK
         run: |
           set -euo pipefail
           EXPECTED_APK="app/build/outputs/apk/debug/app-debug.apk"
+          ALIGNED_APK="app/build/outputs/apk/debug/app-debug-aligned.apk"
 
-          if [ ! -f "$EXPECTED_APK" ]; then
-            echo "Error: Expected debug APK is missing: $EXPECTED_APK"
-            if [ -d "app/build/outputs/apk" ]; then
-              echo "APK paths discovered inside app/build/outputs/apk:"
-              find app/build/outputs/apk -type f -name '*.apk' -print
-            fi
+          if [ ! -f "$EXPECTED_APK" ] || [ ! -s "$EXPECTED_APK" ]; then
+            echo "Error: Expected debug APK is missing or empty: $EXPECTED_APK"
+            find app/build/outputs/apk -type f -name '*.apk' -print || true
             exit 1
           fi
 
-          if [ ! -f "$EXPECTED_APK" ]; then
-            echo "Error: Expected APK is not a regular file."
+          ZIPALIGN="$(find "${ANDROID_HOME}/build-tools" -type f -name zipalign | sort -V | tail -n 1)"
+          APKSIGNER="$(find "${ANDROID_HOME}/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+
+          if [ -z "$ZIPALIGN" ] || [ -z "$APKSIGNER" ]; then
+            echo "Error: Android zipalign/apksigner tools were not found."
             exit 1
           fi
 
-          if [ ! -s "$EXPECTED_APK" ]; then
-            echo "Error: Expected APK is empty: $EXPECTED_APK"
-            exit 1
-          fi
+          echo "Zipaligning APK before final signing..."
+          "$ZIPALIGN" -f -p 4 "$EXPECTED_APK" "$ALIGNED_APK"
+          mv -f "$ALIGNED_APK" "$EXPECTED_APK"
 
-          case "$EXPECTED_APK" in
-            *.apk) ;;
-            *)
-              echo "Error: Expected APK does not have the .apk extension: $EXPECTED_APK"
-              exit 1
-              ;;
-          esac
+          echo "Applying final APK v1/v2/v3 signatures..."
+          "$APKSIGNER" sign \
+            --ks ./debug.keystore \
+            --ks-pass pass:android \
+            --key-pass pass:android \
+            --ks-key-alias androiddebugkey \
+            --v1-signing-enabled true \
+            --v2-signing-enabled true \
+            --v3-signing-enabled true \
+            --out "$EXPECTED_APK.signed" \
+            "$EXPECTED_APK"
 
-          echo "Verified APK: $EXPECTED_APK"
+          mv -f "$EXPECTED_APK.signed" "$EXPECTED_APK"
+
+          echo "Final APK: $EXPECTED_APK"
           echo "APK size: $(stat -c%s "$EXPECTED_APK") bytes"
 
-          APKSIGNER="$(find "${ANDROID_HOME}/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
-          if [ -z "$APKSIGNER" ]; then
-            echo "Error: apksigner was not found in Android SDK build-tools."
-            exit 1
-          fi
+          "$APKSIGNER" verify \
+            --verbose \
+            --min-sdk-version 24 \
+            --max-sdk-version 36 \
+            --print-certs \
+            "$EXPECTED_APK"
 
-          echo "Verifying APK signature with: $APKSIGNER"
-          "$APKSIGNER" verify --verbose "$EXPECTED_APK"
+          echo "APK signature verification passed."
 
       - name: Upload debug APK artifact
         uses: actions/upload-artifact@v4
