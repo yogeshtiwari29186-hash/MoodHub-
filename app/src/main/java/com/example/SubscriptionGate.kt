@@ -15,7 +15,7 @@ import com.google.android.gms.ads.interstitial.InterstitialAd
 import com.google.android.gms.ads.interstitial.InterstitialAdLoadCallback
 
 private const val TAG = "AdMobInterstitial"
-private const val AD_INTERSTITIAL = "ca-app-pub-1835719222780575/9783628813"
+private const val AD_INTERSTITIAL = "ca-app-pub-2881312687834117/1373463789"
 
 @Composable
 fun SubscriptionGate(
